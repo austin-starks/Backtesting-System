@@ -1,14 +1,25 @@
+from datetime import date, timedelta
+from pandas_datareader import data
 import re 
 import pandas as pd
-from datetime import date, timedelta
 import math
 import time
 import logging
 import Helper
 import State
 import os.path
-from pandas_datareader import data
 
+
+def load_stock_data(stock):
+    if os.path.exists(f"stock_price_data/daily/{stock}.csv"):
+        df =  pd.read_csv(f"stock_price_data/daily/{stock}.csv", index_col = "Date")
+    else:
+        df = data.DataReader(stock, 
+                       start='1900-1-1', 
+                       end=date.today().strftime("%m/%d/%Y"), 
+                       data_source='yahoo')
+        df.to_csv(f"stock_price_data/daily/{stock}.csv")
+    return df
 
 def check_backtest_preconditions(start_date, end_date, resolution, days):
     Helper.log_info("Checking preconditions for backtest")
@@ -52,18 +63,6 @@ def backtest(stock_info_list, start_date, end_date, resolution, days):
         else: 
             Helper.log_error(f"resolution {resolution} unimplemented")
     Helper.log_info("Backtest complete")
-
-
-def load_stock_data(stock):
-    if os.path.exists(f"stock_price_data/daily/{stock}.csv"):
-        df =  pd.read_csv(f"stock_price_data/daily/{stock}.csv", index_col = "Date")
-    else:
-        df = data.DataReader(stock, 
-                       start='1900-1-1', 
-                       end=date.today().strftime("%m/%d/%Y"), 
-                       data_source='yahoo')
-        df.to_csv(f"stock_price_data/daily/{stock}.csv")
-    return df
 
 if __name__ == "__main__":
     logging.basicConfig(
