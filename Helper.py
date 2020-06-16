@@ -12,8 +12,8 @@ def log_error(msg):
     """
     for line in traceback.format_stack():
         print(line.strip())
-    print("ERROR:", msg)
-    logging.error(msg)
+    print("ERROR:", str(msg))
+    logging.error(str(msg))
     sys.exit(0)
 
 def log_info(*msg):
@@ -24,5 +24,5 @@ def log_info(*msg):
     """
     if len(msg) == 1:
         msg = msg[0]
-    print("INFO: ", msg)
-    logging.info(msg)
+    print("INFO: ", str(msg))
+    logging.info(str(msg))

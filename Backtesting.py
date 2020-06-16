@@ -9,17 +9,6 @@ import State
 import os.path
 from pandas_datareader import data
 
-def load_stock_data(stock):
-    if os.path.exists(f"/stock_price_data/daily/{stock}.csv"):
-        pass  
-    else:
-        df = data.DataReader(stock, 
-                       start='2020-1-1', 
-                       end=date.today().strftime("%m/%d/%Y"), 
-                       data_source='yahoo')
-        # df.to_csv(f"/stock_price_data/daily/{stock}.csv") 
-        return df
-
 
 def check_backtest_preconditions(start_date, end_date, resolution, days):
     Helper.log_info("Checking preconditions for backtest")
@@ -40,10 +29,10 @@ def check_backtest_preconditions(start_date, end_date, resolution, days):
     Helper.log_info("Preconditions checked")
 
 
-def backtest_helper(stock_list, start_date, portfolio):
-    Helper.log_info(stock_list, start_date)
+def backtest_helper(stock_info_list, start_date, portfolio):
+    Helper.log_info(stock_info_list, start_date)
 
-def backtest(stock_list, start_date, end_date, resolution, days):
+def backtest(stock_info_list, start_date, end_date, resolution, days):
     Helper.log_info("Starting Backtest")
     check_backtest_preconditions(start_date, end_date, resolution, days)
     if days == 'All' or days == 'all':
@@ -59,11 +48,22 @@ def backtest(stock_list, start_date, end_date, resolution, days):
     portfolio = State.Portfolio()
     for epoch in range(epochs):
         if resolution == State.Resolution.DAYS:
-            backtest_helper(stock_list, date1_obj + timedelta(days=epoch), portfolio)
+            backtest_helper(stock_info_list, date1_obj + timedelta(days=epoch), portfolio)
         else: 
             Helper.log_error(f"resolution {resolution} unimplemented")
     Helper.log_info("Backtest complete")
 
+
+def load_stock_data(stock):
+    if os.path.exists(f"stock_price_data/daily/{stock}.csv"):
+        df =  pd.read_csv(f"stock_price_data/daily/{stock}.csv", index_col = "Date")
+    else:
+        df = data.DataReader(stock, 
+                       start='1900-1-1', 
+                       end=date.today().strftime("%m/%d/%Y"), 
+                       data_source='yahoo')
+        df.to_csv(f"stock_price_data/daily/{stock}.csv")
+    return df
 
 if __name__ == "__main__":
     logging.basicConfig(
@@ -71,12 +71,12 @@ if __name__ == "__main__":
         format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
         datefmt='%Y-%m-%d:%H:%M:%S',
         level=logging.INFO)
-    stock_list = ["AAPL"]
+    stock_list = ["AAPL", "SPY"]
     stock_info_list = []
     for stock in stock_list:
-        data = load_stock_data(data)
-        print(data)
-    # start_date, end_date = '2020-9-14', '2020-12-01'
-    # resolution = State.Resolution.DAYS
-    # # a map of stocks to the conditions in which you will buy/sell the stock
-    # backtest(stock_list, start_date, end_date, resolution, days = 'all')
+        df = load_stock_data(stock)
+        # TODO: Implement conditions to buy/sell stock
+        stock_info_list.append(State.StockInfo(stock, [], [], df))
+    start_date, end_date = '2020-9-14', '2020-12-01'
+    resolution = State.Resolution.DAYS
+    backtest(stock_info_list, start_date, end_date, resolution, days = 'all')

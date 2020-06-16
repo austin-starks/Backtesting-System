@@ -7,10 +7,17 @@ class StockInfo(object):
     This class holds information about a stock, including conditions on when to buy the stock, 
     when to sell the stock, and a dataframe of the data about the stock
     """
-    def __init__(self, buying_conditions, selling_conditions, data):
+    def __init__(self, name, buying_conditions, selling_conditions, data):
+        self._name = name
         self._dataframe = data  
         self._buying_conditions = buying_conditions 
         self._selling_conditions = selling_conditions
+    
+    def __str__(self):
+        return self._name
+
+    def __repr__(self):
+        return self._name
 
 class Portfolio(object):
     """
