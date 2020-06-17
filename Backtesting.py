@@ -59,7 +59,8 @@ def backtest_helper(stock_list, current_date, state):
         stock = strategy.get_stock_name()
         buying_conditions = strategy.get_buying_conditions()
         for Condition in buying_conditions:
-            condition = Condition(strategy.get_dataframe(), current_date)
+            condition = Condition(strategy.get_dataframe(),
+                                  portfolio, current_date)
             if condition.is_true():
                 print("Buy stock", stock)
         selling_conditions = strategy.get_selling_conditions()
