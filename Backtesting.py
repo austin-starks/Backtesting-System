@@ -51,26 +51,33 @@ def check_backtest_preconditions(start_date, end_date, resolution, days):
     Helper.log_info("Preconditions checked")
 
 
-def backtest_helper(stock_list, current_date, state):
-    Helper.log_info(stock_list, current_date)
+def insert_strategy_list(stock_list, portfolio):
+    strategy_list = []
+    for stock in stock_list:
+        df = load_stock_data(stock)
+        stock_strategy = State.StockStrategy(stock, df)
+        stock_strategy.set_buying_conditions(
+            # make conditions more easily configurable
+            [Conditions.IsLowForPeriod(df, portfolio, 2)])
+        stock_strategy.set_selling_conditions([])
+        strategy_list.append(stock_strategy)
+    return strategy_list
+
+
+def backtest_helper(stock_list, current_date, current_time, state):
     strategies = state.get_strategy_list()
     portfolio = state.get_portfolio()
-    for strategy in strategies:
-        stock = strategy.get_stock_name()
-        buying_conditions = strategy.get_buying_conditions()
-        for Condition in buying_conditions:
-            condition = Condition(strategy.get_dataframe(),
-                                  portfolio, current_date)
-            if condition.is_true():
-                print("Buy stock", stock)
-        selling_conditions = strategy.get_selling_conditions()
-        for condition in selling_conditions:
-            if portfolio.contains(stock) and condition.is_true():
-                print("Sell stock", stock)
-    # print(portfolio.snapshot())
+    for stock_strategy in strategies:
+        stock_name = stock_strategy.get_stock_name()
+        if stock_strategy.buying_conditions_are_met(current_date, current_time):
+            print("Buy stock", stock_name, current_date, current_time)
+        else:
+            print("Don't buy stock", stock_name, current_date, current_time)
+        if portfolio.contains(stock_name) and stock_strategy.selling_conditions_are_met(current_date, current_time):
+            print("Sell stock", stock_name)
 
 
-def backtest(stock_list, start_date, end_date, resolution, days):
+def backtest(stock_list, start_date, end_date, resolution, days, portfolio, strategy_list):
     Helper.log_info("Starting Backtest")
     check_backtest_preconditions(start_date, end_date, resolution, days)
     if days == 'All' or days == 'all':
@@ -82,24 +89,17 @@ def backtest(stock_list, start_date, end_date, resolution, days):
     elif type(days) == int and days > 0:
         epochs = days
     epochs, current_epoch = epochs * resolution, 0
-    portfolio = State.Portfolio()
-    strategy_list = []
-    for stock in stock_list:
-        df = load_stock_data(stock)
-        # TODO: Implement conditions to buy/sell stock
-        stock_strategy = State.StockStrategy(stock, df)
-        stock_strategy.set_buying_conditions([Conditions.IsLowForWeek])
-        stock_strategy.set_selling_conditions([])
-        strategy_list.append(stock_strategy)
-
     state = State.BacktestingState(portfolio, strategy_list)
+    current_time = State.Time(resolution)
     while current_epoch <= epochs:
         try:
             if resolution == State.Resolution.DAYS:
+                day_delta = current_epoch / resolution
                 backtest_helper(stock_list, date1_obj +
-                                timedelta(days=current_epoch), state)
+                                timedelta(days=day_delta), current_time, state)
             else:
                 Helper.log_error(f"resolution {resolution} unimplemented")
+            current_time.forward_time()
         except KeyError:
             pass
         current_epoch += 1
@@ -112,10 +112,13 @@ def main():
         format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
         datefmt='%Y-%m-%d:%H:%M:%S',
         level=logging.INFO)
-    stock_list = ["AAPL", "SPY", "NVDA"]
-    start_date, end_date = '2020-06-07', '2020-06-14'
+    stock_list = ["NVDA"]
+    portfolio = State.Portfolio()
+    strategy_list = insert_strategy_list(stock_list, portfolio)
+    start_date, end_date = '2019-08-07', '2019-12-18'
     resolution = State.Resolution.DAYS
-    backtest(stock_list, start_date, end_date, resolution, days='all')
+    backtest(stock_list, start_date, end_date,
+             resolution, 'all', portfolio, strategy_list)
 
 
 if __name__ == "__main__":

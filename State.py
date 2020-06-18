@@ -4,9 +4,9 @@ import Conditions
 
 class BacktestingState(object):
     """
-    A class that repreents all of the state during a backtest. 
+    A class that repreents all of the state during a backtest.
 
-    This class holds information about the portfolio and current strategies for 
+    This class holds information about the portfolio and current strategies for
     a backtest
     """
 
@@ -31,9 +31,9 @@ class StockStrategy(object):
     """
     A class representing a trading strategy for a stock.
 
-    This class holds information about a particular strategy for a stock. It 
-    includes the buying/selling conditions for the stock, and how many days 
-    between deploying the strategy can it be deployed again 
+    This class holds information about a particular strategy for a stock. It
+    includes the buying/selling conditions for the stock, and how many days
+    between deploying the strategy can it be deployed again
     """
 
     def __init__(self, name, data, buying_delay=1):
@@ -43,6 +43,7 @@ class StockStrategy(object):
         self._maximum_allocation_for_stock = 0.1
         self._data = data
         self._delay = buying_delay
+        self._last_purchase = None
 
     def get_dataframe(self):
         """
@@ -64,7 +65,7 @@ class StockStrategy(object):
 
     def get_selling_conditions(self):
         """
-        Returns: the buying conditions for this stock strategy
+        Returns: the selling conditions for this stock strategy
         """
         return self._selling_conditions
 
@@ -80,13 +81,32 @@ class StockStrategy(object):
         """
         self._selling_conditions = condition_list
 
+    def buying_conditions_are_met(self, date, time):
+        """
+        Returns: True if buying conditions are met; False otherwise
+        """
+        abool = False
+        # print(date >= date)
+        # print("buying conditions are met", date)
+        for condition in self._buying_conditions:
+            if condition.is_true(date, time):
+                abool = True
+                break
+        return abool and (self._last_purchase is None or self._last_purchase < date)
+
+    def selling_conditions_are_met(self, date, time):
+        """
+        Returns: True if buying conditions are met; False otherwise
+        """
+        return True
+
 
 class Portfolio(object):
     """
-    A class representing a portfolio in a brokerage account. 
+    A class representing a portfolio in a brokerage account.
 
     This class holds information to simulate a portfolio. It includes
-    information like the starting amount, the current portfolio holdings, 
+    information like the starting amount, the current portfolio holdings,
     and trading fees
     """
 
@@ -134,4 +154,45 @@ class Resolution(IntFlag):
     This Enum contains a list of data resolutions to analyze data from. The resolution can be in the magnitude of days
     (trading at open or at close), or can be in the timespan of minutes.
     """
-    DAYS = 1
+    DAYS = 2
+
+    @staticmethod
+    def time_init(resolution):
+        if resolution == Resolution.DAYS:
+            return 'Open'
+        assert False
+
+    @staticmethod
+    def forward_time(time, resolution):
+        if resolution == Resolution.DAYS:
+            if time == 'Open':
+                return 'Close'
+            else:
+                return "Open"
+        assert False
+
+
+class Time(object):
+    """
+    A class representing the current 
+    """
+    resolution_dict = {Resolution.DAYS: ["Open", "Close"]}
+
+    def __init__(self, resolution):
+        self._time = Time.resolution_dict[resolution]
+        self._time_index = 0
+
+    def forward_time(self):
+        self._time_index += 1
+        self._time_index %= 2
+
+    def __str__(self):
+        return self._time[self._time_index]
+
+    def __repr__(self):
+        return self._time[self._time_index]
+
+    def is_eod(self):
+        # print("time index", self._time_index,
+        #       "len(self._time) - 1", len(self._time) - 1)
+        return self._time_index == len(self._time) - 1
