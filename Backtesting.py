@@ -98,6 +98,7 @@ def backtest(stock_list, start_date, end_date, resolution, days, portfolio, stra
             pass
         current_epoch += 1
     Helper.log_info("Backtest complete")
+    Helper.log_info(state.get_portfolio_snapshot())
 
 
 def insert_strategy_list(stock_list, portfolio):

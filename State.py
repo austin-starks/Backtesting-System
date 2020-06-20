@@ -28,6 +28,58 @@ class BacktestingState(object):
         """
         return self._portfolio
 
+    def get_portfolio_snapshot(self):
+        """
+        Returns: a snapshot of the portfolio
+        """
+        return self._portfolio.snapshot()
+
+
+class Holdings(object):
+    """
+    A class representing a holding
+
+    This class contains information about currently held assets including the cost, the type 
+    of asset, and how much the person owns
+    """
+
+    def __init__(self, stock, num_assets, price_paid, type_asset="Stock"):
+        self._stock_name = stock
+        self._num_assets = num_assets
+        self._type = type_asset
+        self._price_paid = price_paid
+
+    def __hash__(self):
+        return hash(self._stock_name + self._type)
+
+    def __eq__(self, other):
+        return self._stock_name == other._stock_name and self._type == other._type
+
+    def __str__(self):
+        return self._stock_name + " | Num assets: " + self._num_assets + " | Value: " + str(self._price_paid)
+
+    def __repr__(self):
+        return self._stock_name + " | Num assets: " + str(self._num_assets) + " | Value: " + str(self._price_paid)
+
+    def get_name(self):
+        """
+        Returns: the name of the holdings
+        """
+        return self._stock_name
+
+    def add_shares(self, num_assets, price_paid):
+        """
+        Adds additional shares to holdings
+        """
+        self._num_assets += num_assets
+        self._price_paid += price_paid
+
+    def get_value(self):
+        """
+        Returns: the price paid for all of this holding
+        """
+        return self._price_paid
+
 
 class StockStrategy(object):
     """
@@ -43,7 +95,7 @@ class StockStrategy(object):
         self._buying_conditions = []
         self._selling_conditions = []
         self._buying_allocation_for_stock = 0.05
-        self._maximum_allocation_for_stock = 0.3
+        self._maximum_allocation_for_stock = 1.0
         self._data = data
         self._delay = buying_delay
         self._last_purchase = None
@@ -113,7 +165,7 @@ class StockStrategy(object):
         """
         Returns: True if buying conditions are met; False otherwise
         """
-        return True
+        return False
 
     def get_buying_allocation(self):
         """
@@ -151,7 +203,7 @@ class Portfolio(object):
         """
         Returns: a snapshot of the portfolio
         """
-        return f"Initial Value: {self._initial_value}\nCurrent Value: {self.get_portfolio_value()}" + \
+        return f"Snapshot:\nInitial Value: {self._initial_value}\nCurrent Value: {self.get_portfolio_value()}" + \
             f"\nBuying Power: {self.get_buying_power()}\nCurrent Holdings: {self._current_holdings}\n" + \
             f"Percent Change from Start: {round((self.get_portfolio_value() - self._initial_value) / self._initial_value) * 100}%"
 
@@ -174,7 +226,10 @@ class Portfolio(object):
         """
         Returns: True if this portfolio contains stock. False otherwise.
         """
-        return stock in self._current_holdings
+        for holding in self._current_holdings:
+            if holding.get_name() == stock:
+                return True
+        return False
 
     def get_current_allocation(self, stock):
         """
@@ -189,17 +244,23 @@ class Portfolio(object):
         else:
             return 0.0
 
-    def add_holdings(self, stock, num_shares):
+    def add_holdings(self, stock, num_shares, price_paid):
         """
         Adds the holdings to the portfolio
         """
-        pass
+        new_holding = Holdings(stock, num_shares, price_paid)
+        if new_holding in self._current_holdings:
+            ind = self._current_holdings.index(new_holding)
+            holding = self._current_holdings[ind]
+            holding.add_shares(num_shares, price_paid)
+        else:
+            self._current_holdings.append(new_holding)
 
     def decrease_buying_power(self, cost):
         """
         Decreases the buying power by cost
         """
-        pass
+        self._buying_power -= cost
 
     def buy(self, stock, stock_strategy, date, time):
         """
@@ -218,17 +279,18 @@ class Portfolio(object):
             num_shares = buying_allocation
         elif type_allo == float:
             dollars_to_spend = self.get_portfolio_value()*buying_allocation
-            num_shares = dollars_to_spend // last_price
+            num_shares = int(dollars_to_spend // last_price)
         else:
             Helper.log_error(f"Buying allocation should be an int or float")
         buying_power = self.get_buying_power()
+        total_price = num_shares*last_price
         if self.get_current_allocation(stock) > max_allocation:
             Helper.log_warn(
                 f"Portfolio currently has maximum allocation of {stock}")
-        elif dollars_to_spend < buying_power:
+        elif total_price < buying_power:
             abool = True
-            self.decrease_buying_power(dollars_to_spend)
-            self.add_holdings(stock, num_shares)
+            self.decrease_buying_power(total_price)
+            self.add_holdings(stock, num_shares, total_price)
         else:
             Helper.log_warn(f"Insufficent buying power to buy {stock}")
         return abool

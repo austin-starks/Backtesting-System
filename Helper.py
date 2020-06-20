@@ -35,5 +35,7 @@ def log_warn(*msg):
 
     This function prints the message and saves the message to the log
     """
+    if len(msg) == 1:
+        msg = msg[0]
     print("WARNING: ", str(msg))
     logging.warn(str(msg))
