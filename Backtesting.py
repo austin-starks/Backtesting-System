@@ -51,28 +51,22 @@ def check_backtest_preconditions(start_date, end_date, resolution, days):
     Helper.log_info("Preconditions checked")
 
 
-def insert_strategy_list(stock_list, portfolio):
-    strategy_list = []
-    for stock in stock_list:
-        df = load_stock_data(stock)
-        stock_strategy = State.StockStrategy(stock, df)
-        stock_strategy.set_buying_conditions(
-            # make conditions more easily configurable
-            [Conditions.IsLowForPeriod(df, portfolio, 2)])
-        stock_strategy.set_selling_conditions([])
-        strategy_list.append(stock_strategy)
-    return strategy_list
-
-
 def backtest_helper(stock_list, current_date, current_time, state):
     strategies = state.get_strategy_list()
     portfolio = state.get_portfolio()
     for stock_strategy in strategies:
+        dataframe = stock_strategy.get_dataframe()
         stock_name = stock_strategy.get_stock_name()
         if stock_strategy.buying_conditions_are_met(current_date, current_time):
-            print("Buy stock", stock_name, current_date, current_time)
-        else:
-            print("Don't buy stock", stock_name, current_date, current_time)
+            buy_success = portfolio.buy(
+                stock_name, stock_strategy, current_date, current_time)
+            if buy_success:
+                today = dataframe.loc[str(current_date)]
+                current_price = round(
+                    today.loc[str(current_time)], 2)
+                Helper.log_info(
+                    f"Bought stock: {stock_name} on {current_date} at {current_time} for ${current_price}")
+                stock_strategy.ackowledge_buy(current_date, current_time)
         if portfolio.contains(stock_name) and stock_strategy.selling_conditions_are_met(current_date, current_time):
             print("Sell stock", stock_name)
 
@@ -104,6 +98,19 @@ def backtest(stock_list, start_date, end_date, resolution, days, portfolio, stra
             pass
         current_epoch += 1
     Helper.log_info("Backtest complete")
+
+
+def insert_strategy_list(stock_list, portfolio):
+    strategy_list = []
+    for stock in stock_list:
+        df = load_stock_data(stock)
+        stock_strategy = State.StockStrategy(stock, df)
+        stock_strategy.set_buying_conditions(
+            # make conditions more easily configurable
+            [Conditions.IsLowForPeriod(df, portfolio, 0)])
+        stock_strategy.set_selling_conditions([])
+        strategy_list.append(stock_strategy)
+    return strategy_list
 
 
 def main():

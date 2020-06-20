@@ -1,5 +1,7 @@
 from enum import IntFlag
 import Conditions
+from datetime import date, timedelta
+import Helper
 
 
 class BacktestingState(object):
@@ -40,10 +42,12 @@ class StockStrategy(object):
         self._name = name
         self._buying_conditions = []
         self._selling_conditions = []
-        self._maximum_allocation_for_stock = 0.1
+        self._buying_allocation_for_stock = 0.05
+        self._maximum_allocation_for_stock = 0.3
         self._data = data
         self._delay = buying_delay
         self._last_purchase = None
+        self._last_price = None
 
     def get_dataframe(self):
         """
@@ -81,24 +85,47 @@ class StockStrategy(object):
         """
         self._selling_conditions = condition_list
 
+    def ackowledge_buy(self, date, time):
+        """
+        Sets last purchase to be a tuple of the last time this stock strategy was executed
+        """
+        self._last_purchase = (date, time)
+
+    def get_stock_price(self, date, time):
+        """
+        Returns: the current price of the stock at this date and time
+        """
+        return round(self._data.loc[str(date)].loc[str(time)], 2)
+
     def buying_conditions_are_met(self, date, time):
         """
         Returns: True if buying conditions are met; False otherwise
         """
         abool = False
-        # print(date >= date)
-        # print("buying conditions are met", date)
+        self._last_price = self.get_stock_price(date, time)
         for condition in self._buying_conditions:
             if condition.is_true(date, time):
                 abool = True
                 break
-        return abool and (self._last_purchase is None or self._last_purchase < date)
+        return abool and (self._last_purchase is None or self._last_purchase[0] + timedelta(self._delay) <= date)
 
     def selling_conditions_are_met(self, date, time):
         """
         Returns: True if buying conditions are met; False otherwise
         """
         return True
+
+    def get_buying_allocation(self):
+        """
+        Returns: The buying allocatin for this strategy
+        """
+        return self._buying_allocation_for_stock
+
+    def get_maximum_allocation(self):
+        """
+        Returns: The buying allocatin for this strategy
+        """
+        return self._maximum_allocation_for_stock
 
 
 class Portfolio(object):
@@ -110,11 +137,11 @@ class Portfolio(object):
     and trading fees
     """
 
-    def __init__(self, initial_value=10000, current_value=10000, margin=1000,
+    def __init__(self, initial_cash=100000,
                  current_holdings=[], past_holdings=[], trading_fees=.01):
-        self._initial_value = initial_value
-        self._current_value = current_value
-        self._margin = margin
+        self._initial_value = initial_cash
+        self._buying_power = initial_cash
+        self._margin = 0  # will add margin later
         self._current_holdings = current_holdings
         self._past_holdings = past_holdings
         self._fees = trading_fees
@@ -124,27 +151,75 @@ class Portfolio(object):
         """
         Returns: a snapshot of the portfolio
         """
-        return f"Initial Value: {self._initial_value}\nCurrent Value: {self._current_value}" + \
+        return f"Initial Value: {self._initial_value}\nCurrent Value: {self.get_portfolio_value()}" + \
             f"\nBuying Power: {self.get_buying_power()}\nCurrent Holdings: {self._current_holdings}\n" + \
-            f"Percent Change from Start: {round((self._current_value - self._initial_value) / self._initial_value) * 100}%"
+            f"Percent Change from Start: {round((self.get_portfolio_value() - self._initial_value) / self._initial_value) * 100}%"
 
     def get_buying_power(self):
         """
         Returns: the current buying power of the portfolio
         """
-        if self._current_holdings == []:
-            return self._current_value + self._margin
-        else:
-            holdings_value = 0
-            for holding in self._current_holdings:
-                holdings_value += holding.value
-            return self._current_value + self._margin - holdings_value
+        return self._buying_power
+
+    def get_portfolio_value(self):
+        """
+        Returns: the value of all assets/cash in the portfolio
+        """
+        holdings_value = 0.0
+        for holding in self._current_holdings:
+            holdings_value += holding.get_value()
+        return self.get_buying_power() + holdings_value
 
     def contains(self, stock):
         """
         Returns: True if this portfolio contains stock. False otherwise.
         """
         return stock in self._current_holdings
+
+    def get_current_allocation(self, stock):
+        """
+        Returns: the percent of the portfolio that this stock makes up.
+        """
+        if self.contains(stock):
+            holdings_value = 0.0
+            for holding in self._current_holdings:
+                if holding.get_name() == stock:
+                    holdings_value += holding.get_value()
+            return holdings_value/self.get_portfolio_value()
+        else:
+            return 0.0
+
+    def buy(self, stock, stock_strategy, date, time):
+        """
+        Buys buying_allocation stock. If buying allocation is an int, it will buy that many shares. Otherwise, it'll
+        buy that percent of the portfolio worth of the stock.
+
+        Returns: True if the buy is succcessful. False otherwise
+        """
+        abool = False
+        buying_allocation = stock_strategy.get_buying_allocation()
+        max_allocation = stock_strategy.get_maximum_allocation()
+        last_price = stock_strategy.get_stock_price(date, time)
+        type_allo = type(buying_allocation)
+        if type_allo == int:
+            dollars_to_spend = buying_allocation * last_price
+            num_shares = buying_allocation
+        elif type_allo == float:
+            dollars_to_spend = self.get_portfolio_value()*buying_allocation
+            num_shares = dollars_to_spend // last_price
+        else:
+            Helper.log_error(f"Buying allocation should be an int or float")
+        buying_power = self.get_buying_power()
+        if self.get_current_allocation(stock) > max_allocation:
+            Helper.log_warn(
+                f"Portfolio currently has maximum allocation of {stock}")
+        elif dollars_to_spend < buying_power:
+            abool = True
+            # Logic to decrease buying power and add holdings
+            pass
+        else:
+            Helper.log_warn(f"Insufficent buying power to buy {stock}")
+        return abool
 
 
 class Resolution(IntFlag):
@@ -174,7 +249,7 @@ class Resolution(IntFlag):
 
 class Time(object):
     """
-    A class representing the current 
+    A class representing the current
     """
     resolution_dict = {Resolution.DAYS: ["Open", "Close"]}
 
