@@ -51,24 +51,42 @@ def check_backtest_preconditions(start_date, end_date, resolution, days):
     Helper.log_info("Preconditions checked")
 
 
+def backtest_buy(stock_name, stock_strategy, current_date, current_time, portfolio, stock_data):
+    if stock_strategy.buying_conditions_are_met(current_date, current_time):
+        buy_success = portfolio.buy(
+            stock_name, stock_strategy, current_date, current_time)
+        if buy_success:
+            today = stock_data.loc[str(current_date)]
+            current_price = round(
+                today.loc[str(current_time)], 2)
+            Helper.log_info(
+                f"Bought stock: {stock_name} on {current_date} at {current_time} for ${current_price}")
+            stock_strategy.ackowledge_buy(current_date, current_time)
+
+
+def backtest_sell(stock_name, stock_strategy, current_date, current_time, portfolio, stock_data):
+    if portfolio.contains(stock_name) and stock_strategy.selling_conditions_are_met(current_date, current_time):
+        sell_success = portfolio.sell(
+            stock_name, stock_strategy, current_date, current_time)
+        if sell_success:
+            today = stock_data.loc[str(current_date)]
+            current_price = round(
+                today.loc[str(current_time)], 2)
+            Helper.log_info(
+                f"Sold stock: {stock_name} on {current_date} at {current_time} for ${current_price}")
+            stock_strategy.ackowledge_sell(current_date, current_time)
+
+
 def backtest_helper(stock_list, current_date, current_time, state):
     strategies = state.get_strategy_list()
     portfolio = state.get_portfolio()
     for stock_strategy in strategies:
         dataframe = stock_strategy.get_dataframe()
         stock_name = stock_strategy.get_stock_name()
-        if stock_strategy.buying_conditions_are_met(current_date, current_time):
-            buy_success = portfolio.buy(
-                stock_name, stock_strategy, current_date, current_time)
-            if buy_success:
-                today = dataframe.loc[str(current_date)]
-                current_price = round(
-                    today.loc[str(current_time)], 2)
-                Helper.log_info(
-                    f"Bought stock: {stock_name} on {current_date} at {current_time} for ${current_price}")
-                stock_strategy.ackowledge_buy(current_date, current_time)
-        if portfolio.contains(stock_name) and stock_strategy.selling_conditions_are_met(current_date, current_time):
-            print("Sell stock", stock_name)
+        backtest_buy(stock_name, stock_strategy, current_date,
+                     current_time, portfolio, dataframe)
+        backtest_sell(stock_name, stock_strategy, current_date,
+                      current_time, portfolio, dataframe)
 
 
 def backtest(stock_list, start_date, end_date, resolution, days, portfolio, strategy_list):
@@ -89,8 +107,8 @@ def backtest(stock_list, start_date, end_date, resolution, days, portfolio, stra
         try:
             if resolution == State.Resolution.DAYS:
                 day_delta = current_epoch / resolution
-                backtest_helper(stock_list, date1_obj +
-                                timedelta(days=day_delta), current_time, state)
+                current_date = date1_obj + timedelta(days=day_delta)
+                backtest_helper(stock_list, current_date, current_time, state)
             else:
                 Helper.log_error(f"resolution {resolution} unimplemented")
             current_time.forward_time()
@@ -98,18 +116,27 @@ def backtest(stock_list, start_date, end_date, resolution, days, portfolio, stra
             pass
         current_epoch += 1
     Helper.log_info("Backtest complete")
-    Helper.log_info(state.get_portfolio_snapshot())
+    Helper.log_info(state.get_portfolio_snapshot(
+        current_date, current_time))
 
 
 def insert_strategy_list(stock_list, portfolio):
     strategy_list = []
     for stock in stock_list:
         df = load_stock_data(stock)
-        stock_strategy = State.StockStrategy(stock, df)
+        # buying_allocation = input(
+        #     f"What buying allocation do you want for {stock}?:   ")
+        # if "." in buying_allocation:
+        #     buying_allocation = float(buying_allocation)
+        # else:
+        #     buying_allocation = int(buying_allocation)
+        stock_strategy = State.StockStrategy(
+            stock, df, buying_allocation=0.05)
         stock_strategy.set_buying_conditions(
-            # make conditions more easily configurable
             [Conditions.IsLowForPeriod(df, portfolio, 0)])
-        stock_strategy.set_selling_conditions([])
+        # stock_strategy.set_selling_conditions([])
+        stock_strategy.set_selling_conditions([
+            Conditions.IsHighForPeriod(df, portfolio, 2)])
         strategy_list.append(stock_strategy)
     return strategy_list
 
@@ -120,10 +147,10 @@ def main():
         format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
         datefmt='%Y-%m-%d:%H:%M:%S',
         level=logging.INFO)
-    stock_list = ["NVDA"]
+    stock_list = ["NVDA", "SHOP", "AMD"]
     portfolio = State.Portfolio()
     strategy_list = insert_strategy_list(stock_list, portfolio)
-    start_date, end_date = '2019-08-07', '2019-12-18'
+    start_date, end_date = '2020-01-01', '2020-06-01'
     resolution = State.Resolution.DAYS
     backtest(stock_list, start_date, end_date,
              resolution, 'all', portfolio, strategy_list)
