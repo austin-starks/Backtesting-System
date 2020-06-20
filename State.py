@@ -189,6 +189,18 @@ class Portfolio(object):
         else:
             return 0.0
 
+    def add_holdings(self, stock, num_shares):
+        """
+        Adds the holdings to the portfolio
+        """
+        pass
+
+    def decrease_buying_power(self, cost):
+        """
+        Decreases the buying power by cost
+        """
+        pass
+
     def buy(self, stock, stock_strategy, date, time):
         """
         Buys buying_allocation stock. If buying allocation is an int, it will buy that many shares. Otherwise, it'll
@@ -215,8 +227,8 @@ class Portfolio(object):
                 f"Portfolio currently has maximum allocation of {stock}")
         elif dollars_to_spend < buying_power:
             abool = True
-            # Logic to decrease buying power and add holdings
-            pass
+            self.decrease_buying_power(dollars_to_spend)
+            self.add_holdings(stock, num_shares)
         else:
             Helper.log_warn(f"Insufficent buying power to buy {stock}")
         return abool
