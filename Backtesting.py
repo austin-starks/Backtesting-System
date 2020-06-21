@@ -12,7 +12,7 @@ import Conditions
 
 
 def load_stock_data(stock):
-    if os.path.exists(f"stock_price_data/daily/{stock}.csv"):
+    if os.path.exists(f"price_data/daily/{stock}.csv"):
         df = pd.read_csv(
             f"price_data/daily/{stock}.csv", index_col="Date")
     else:
