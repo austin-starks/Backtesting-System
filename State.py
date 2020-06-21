@@ -380,6 +380,8 @@ class Portfolio(object):
             self.decrease_buying_power(total_price)
             self.add_holdings(stock, num_shares)
             self.add_strategy_data(stock_strategy)
+            Helper.log_info(
+                f"Bought {num_shares} {stock} shares on {date} at {time} for ${last_price} per share.")
         else:
             Helper.log_warn(f"Insufficent buying power to buy {stock}")
         return abool
@@ -403,6 +405,8 @@ class Portfolio(object):
         # print('shares to sell', shares_to_sell)
         self.increase_buying_power(exact_shares_gain)
         self.subtract_holdings(stock, shares_to_sell)
+        Helper.log_info(
+            f"Sold {shares_to_sell} {stock} shares on {date} at {time} for ${last_price} per share.")
         return True
 
 

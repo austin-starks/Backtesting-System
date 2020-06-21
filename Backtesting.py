@@ -56,11 +56,6 @@ def backtest_buy(stock_name, stock_strategy, current_date, current_time, portfol
         buy_success = portfolio.buy(
             stock_name, stock_strategy, current_date, current_time)
         if buy_success:
-            today = stock_data.loc[str(current_date)]
-            current_price = round(
-                today.loc[str(current_time)], 2)
-            Helper.log_info(
-                f"Bought stock: {stock_name} on {current_date} at {current_time} for ${current_price}")
             stock_strategy.ackowledge_buy(current_date, current_time)
 
 
@@ -69,11 +64,6 @@ def backtest_sell(stock_name, stock_strategy, current_date, current_time, portfo
         sell_success = portfolio.sell(
             stock_name, stock_strategy, current_date, current_time)
         if sell_success:
-            today = stock_data.loc[str(current_date)]
-            current_price = round(
-                today.loc[str(current_time)], 2)
-            Helper.log_info(
-                f"Sold stock: {stock_name} on {current_date} at {current_time} for ${current_price}")
             stock_strategy.ackowledge_sell(current_date, current_time)
 
 
@@ -124,19 +114,19 @@ def insert_strategy_list(stock_list, portfolio):
     strategy_list = []
     for stock in stock_list:
         df = load_stock_data(stock)
-        # buying_allocation = input(
-        #     f"What buying allocation do you want for {stock}?:   ")
-        # if "." in buying_allocation:
-        #     buying_allocation = float(buying_allocation)
-        # else:
-        #     buying_allocation = int(buying_allocation)
         stock_strategy = State.StockStrategy(
-            stock, df, buying_allocation=0.05)
+            stock, df, buying_allocation=0.1, selling_allocation=.05)
         stock_strategy.set_buying_conditions(
             [Conditions.IsLowForPeriod(df, portfolio, 0)])
-        # stock_strategy.set_selling_conditions([])
         stock_strategy.set_selling_conditions([
-            Conditions.IsHighForPeriod(df, portfolio, 2)])
+            Conditions.IsHighForPeriod(df, portfolio, 1.5)])
+
+        # stock_strategy = State.StockStrategy(
+        #     stock, df, buying_allocation=0.25, maximum_allocation=0.25)
+        # stock_strategy.set_buying_conditions(
+        #     [Conditions.IsLowForPeriod(df, portfolio, 0)])
+        # stock_strategy.set_selling_conditions([])
+
         strategy_list.append(stock_strategy)
     return strategy_list
 
@@ -147,10 +137,10 @@ def main():
         format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
         datefmt='%Y-%m-%d:%H:%M:%S',
         level=logging.INFO)
-    stock_list = ["NVDA", "SHOP", "AMD"]
+    stock_list = ["GE"]
     portfolio = State.Portfolio()
     strategy_list = insert_strategy_list(stock_list, portfolio)
-    start_date, end_date = '2020-01-01', '2020-06-01'
+    start_date, end_date = '2019-10-01', '2020-06-18'
     resolution = State.Resolution.DAYS
     backtest(stock_list, start_date, end_date,
              resolution, 'all', portfolio, strategy_list)

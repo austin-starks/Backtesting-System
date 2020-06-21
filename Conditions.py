@@ -31,7 +31,7 @@ class Condition(ABC):
 
 class TimePeriodCondition(Condition):
     """
-    Condition parent class for conditions that has to deal with a stock's price 
+    Condition parent class for conditions that has to deal with a stock's price
     within a time period.
     """
 
@@ -54,7 +54,9 @@ class TimePeriodCondition(Condition):
         if len(self._changing_data) == 0:
             dataframe = self.get_data()
             today = datapoint.name
-            date_arr = [int(x) for x in re.split(r'[\-]', str(today))]
+            if type(today) == pd._libs.tslibs.timestamps.Timestamp:
+                today = today.strftime("%Y/%m/%d")
+            date_arr = [int(x) for x in re.split(r'[\-/]', today)]
             date_obj = date(date_arr[0], date_arr[1], date_arr[2])
             arr = []
             i = 0
