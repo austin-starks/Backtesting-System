@@ -160,20 +160,27 @@ def insert_strategy_list_crypto(crypto_list, portfolio):
     for crypto in crypto_list:
         df = load_crypto_data(crypto)
         stock_strategy = State.StockStrategy(
-            crypto, df, buying_allocation=0.08, selling_allocation=.16,
+            crypto, df, buying_allocation=0.2, selling_allocation=.1,
             buying_allocation_type='percent_bp', must_be_profitable_to_sell=True, assets='crypto')
         stock_strategy.set_buying_conditions([
-            Conditions.IsLowForPeriod(df, portfolio, -6, week_length=30)
+            Conditions.IsLowForPeriod(df, portfolio, -5, week_length=7),
+            Conditions.IsLowForPeriod(df, portfolio, -2, week_length=30),
         ])
         stock_strategy.set_selling_conditions([
-            Conditions.IsHighForPeriod(df, portfolio, 6, week_length=30)
+            Conditions.IsHighForPeriod(df, portfolio, 2, week_length=360),
+            Conditions.IsHighForPeriod(df, portfolio, 4, week_length=7)
         ])
         strategy_list.append(stock_strategy)
     return strategy_list
 
 
-def backtest_crypto(crypto_list=['BTC'], start_date='2018-05-10', end_date='2020-06-05'):
+def backtest_crypto(crypto_list=['BTC'], start_date='2018-08-18', end_date='2020-06-19'):
     portfolio = State.Portfolio(initial_cash=5000, trading_fees=2.00)
+    initial_holdings = []
+    for crypto in crypto_list:
+        initial_holdings.append(
+            ('BTC', 0.25, "crypto", load_crypto_data(crypto)))
+    portfolio.add_initial_holdings(initial_holdings, start_date)
     strategy_list = insert_strategy_list_crypto(crypto_list, portfolio)
     resolution = State.Resolution.Hourly
     backtest(crypto_list, start_date, end_date,

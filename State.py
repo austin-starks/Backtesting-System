@@ -178,29 +178,27 @@ class StockStrategy(object):
         """
         Returns: True if buying conditions are met; False otherwise
         """
-        abool = False
+        abool = True
         self._last_price = self.get_stock_price(date, time)
         # print('price', date, time, self._last_price)
         for condition in self._buying_conditions:
             # print("is_true", condition.is_true(date, time, self._assets))
             # print(date, time, self._assets)
-            if condition.is_true(date, time, self._assets):
-                abool = True
-                break
+            abool = abool and condition.is_true(date, time, self._assets)
+
         return abool and (self._last_purchase is None or self._last_purchase[0] + timedelta(self._delay) <= date)
 
     def selling_conditions_are_met(self, date, time, is_profitable=True):
         """
         Returns: True if selling conditions are met; False otherwise
         """
-        abool = False
+        abool = True
         for condition in self._selling_conditions:
-            if condition.is_true(date, time, self._assets):
-                if self._must_be_profitable:
-                    abool = is_profitable
-                else:
-                    abool = True
-                break
+            if self._must_be_profitable:
+                abool = abool and condition.is_true(
+                    date, time, self._assets) and is_profitable
+            else:
+                abool = abool and condition.is_true(date, time, self._assets)
         return abool and (self._last_sale is None or self._last_sale[0] + timedelta(self._delay) <= date)
 
     def get_buying_allocation(self):
@@ -263,10 +261,11 @@ class Portfolio(object):
 
     def __init__(self, initial_cash=100000.00,
                  current_holdings=[], past_holdings=[], trading_fees=0.75):
-        self._initial_value = initial_cash
-        self._buying_power = initial_cash
-        self._margin = 0  # will add margin later
+
         self._current_holdings = current_holdings
+        self._buying_power = initial_cash
+        self._initial_value = initial_cash
+        self._margin = 0  # will add margin later
         self._fees = trading_fees
         self._conditions = []
         self._strategies = dict()
@@ -342,11 +341,11 @@ class Portfolio(object):
         else:
             return 0.0
 
-    def add_holdings(self, stock, num_shares):
+    def add_holdings(self, stock, num_shares, asset_type):
         """
         Adds the holdings to the portfolio
         """
-        new_holding = Holdings(stock, num_shares)
+        new_holding = Holdings(stock, num_shares, asset_type)
         if new_holding in self._current_holdings:
             ind = self._current_holdings.index(new_holding)
             holding = self._current_holdings[ind]
@@ -354,11 +353,32 @@ class Portfolio(object):
         else:
             self._current_holdings.append(new_holding)
 
-    def subtract_holdings(self, stock, num_shares):
+    def add_initial_holdings(self, holding_list, date):
+        """
+        Adds holding_list to the portfolio as an initial holding.
+
+        Parameter holding_list: A 4-element tuple with the following format:
+            (Name, Number Holdings, Asset type, Holdings data)
+        """
+        assert type(
+            holding_list[0][0]) == str, 'Name of holding must be string'
+        assert type(holding_list[0][1]) == float or type(
+            holding_list[0][1]) == int, 'Number of holdings in the tuple must be number'
+        assert type(holding_list[0][2]) == str, "Asset type must be a string"
+        for holding_tup in holding_list:
+            self.add_holdings(holding_tup[0], holding_tup[1], holding_tup[2])
+            self._initial_value += holding_tup[1] * \
+                StockStrategy.get_stock_price_static(
+                    holding_tup[3], date, '12-AM')
+            self.add_strategy_data_from_df(holding_tup[0], holding_tup[3])
+            Helper.log_info(
+                f"Added {holding_tup[1]} {holding_tup[0]} shares to the initial portfolio.")
+
+    def subtract_holdings(self, stock, num_shares, asset_type):
         """
         Subtract the holdings to the portfolio
         """
-        new_holding = Holdings(stock, num_shares)
+        new_holding = Holdings(stock, num_shares, asset_type)
         if new_holding in self._current_holdings:
             ind = self._current_holdings.index(new_holding)
             holding = self._current_holdings[ind]
@@ -386,6 +406,12 @@ class Portfolio(object):
         Adds the stock strategy to this portfolio
         """
         self._strategies[strategy.get_asset_name()] = strategy.get_dataframe()
+
+    def add_strategy_data_from_df(self, name, df):
+        """
+        Adds the dataframe to the stock strategies list
+        """
+        self._strategies[name] = df
 
     def shares_to_buy(self, stock_strategy, buying_allocation, date, time, last_price):
         """
@@ -440,6 +466,7 @@ class Portfolio(object):
         Returns: True if the buy is succcessful. False otherwise
         """
         abool = False
+        asset_type = stock_strategy.get_asset_type()
         buying_allocation = stock_strategy.get_buying_allocation()
         max_allocation = stock_strategy.get_maximum_allocation()
         last_price = stock_strategy.get_stock_price(date, time)
@@ -453,7 +480,7 @@ class Portfolio(object):
         elif total_price < buying_power:
             abool = True
             self.decrease_buying_power(total_price)
-            self.add_holdings(stock, num_shares)
+            self.add_holdings(stock, num_shares, asset_type)
             self.add_strategy_data(stock_strategy)
             Helper.log_info(
                 f"Bought {num_shares} {stock} shares on {date} at {time} for ${last_price} per share.")
@@ -481,7 +508,7 @@ class Portfolio(object):
             # print('exact_shares_gain', exact_shares_gain)
             # print('shares to sell', shares_to_sell)
             self.increase_buying_power(exact_shares_gain)
-            self.subtract_holdings(stock, shares_to_sell)
+            self.subtract_holdings(stock, shares_to_sell, asset_type)
             Helper.log_info(
                 f"Sold {shares_to_sell} {stock} shares on {date} at {time} for ${last_price} per share.")
             return True
@@ -489,7 +516,7 @@ class Portfolio(object):
             exact_shares_gain = selling_allocation * current_value_holdings
             shares_to_sell = exact_shares_gain / last_price
             self.increase_buying_power(exact_shares_gain)
-            self.subtract_holdings(stock, shares_to_sell)
+            self.subtract_holdings(stock, shares_to_sell, asset_type)
             Helper.log_info(
                 f"Sold {shares_to_sell} {stock} shares on {date} at {time} for ${last_price} per share.")
             return True
