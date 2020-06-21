@@ -73,7 +73,7 @@ def backtest_sell(stock_name, stock_strategy, current_date, current_time, portfo
             stock_strategy.ackowledge_sell(current_date, current_time)
 
 
-def backtest_loop_helper(stock_list, current_date, current_time, state):
+def backtest_loop_helper(asset_list, current_date, current_time, state):
     strategies = state.get_strategy_list()
     portfolio = state.get_portfolio()
     for stock_strategy in strategies:
@@ -85,20 +85,24 @@ def backtest_loop_helper(stock_list, current_date, current_time, state):
                       current_time, portfolio, dataframe)
 
 
-def backtest_loop(stock_list, state, resolution, date1_obj, day_delta, current_time, current_epoch):
-    if resolution == State.Resolution.Daily:
+def backtest_loop(asset_list, state, resolution, date1_obj, day_delta, current_time, current_epoch):
+    if resolution == State.Resolution.Daily or resolution == State.Resolution.DAILY:
         try:
             current_date = date1_obj + timedelta(days=day_delta)
             backtest_loop_helper(
-                stock_list, current_date, current_time, state)
+                asset_list, current_date, current_time, state)
         except KeyError:
             pass
+    elif resolution == State.Resolution.Hourly or resolution == State.Resolution.HOURLY:
+        current_date = date1_obj + timedelta(days=day_delta)
+        backtest_loop_helper(
+            asset_list, current_date, current_time, state)
     else:
         Helper.log_error(f"resolution {resolution} unimplemented")
         current_time.forward_time(resolution)
 
 
-def backtest(stock_list, start_date, end_date, resolution, days, portfolio, strategy_list):
+def backtest(asset_list, start_date, end_date, resolution, days, portfolio, strategy_list):
     Helper.log_info("Starting Backtest")
     check_backtest_preconditions(start_date, end_date, resolution, days)
     if days == 'All' or days == 'all':
@@ -113,8 +117,8 @@ def backtest(stock_list, start_date, end_date, resolution, days, portfolio, stra
     state = State.BacktestingState(portfolio, strategy_list)
     current_time = State.Time(resolution)
     while current_epoch <= epochs:
-        day_delta = current_epoch / resolution
-        backtest_loop(stock_list, state, resolution,
+        day_delta = current_epoch // resolution
+        backtest_loop(asset_list, state, resolution,
                       date1_obj, day_delta, current_time, current_epoch)
         current_epoch += 1
     Helper.log_info("Backtest complete")
@@ -122,9 +126,9 @@ def backtest(stock_list, start_date, end_date, resolution, days, portfolio, stra
         date1_obj + timedelta(days=day_delta), current_time))
 
 
-def insert_strategy_list_stocks(stock_list, portfolio):
+def insert_strategy_list_stocks(asset_list, portfolio):
     strategy_list = []
-    for stock in stock_list:
+    for stock in asset_list:
         df = load_stock_data(stock)
         stock_strategy = State.StockStrategy(
             stock, df, buying_allocation=0.30, selling_allocation=.10, buying_allocation_type='percent_bp')
@@ -148,7 +152,7 @@ def insert_strategy_list_crypto(crypto_list, portfolio):
     for crypto in crypto_list:
         df = load_crypto_data(crypto)
         stock_strategy = State.StockStrategy(
-            crypto, df, buying_allocation=0.30, selling_allocation=.10, buying_allocation_type='percent_bp')
+            crypto, df, buying_allocation=0.30, selling_allocation=.10, buying_allocation_type='percent_bp', assets='crypto')
         stock_strategy.set_buying_conditions(
             [Conditions.IsLowForPeriod(df, portfolio, 0)])
         stock_strategy.set_selling_conditions([
@@ -157,11 +161,11 @@ def insert_strategy_list_crypto(crypto_list, portfolio):
     return strategy_list
 
 
-def backtest_stocks(stock_list=["NVDA", "AMD", "DPZ"], start_date='2020-01-01', end_date='2020-06-18'):
+def backtest_stocks(asset_list=["NVDA", "AMD", "DPZ"], start_date='2020-01-01', end_date='2020-06-18'):
     portfolio = State.Portfolio()
-    strategy_list = insert_strategy_list_stocks(stock_list, portfolio)
+    strategy_list = insert_strategy_list_stocks(asset_list, portfolio)
     resolution = State.Resolution.Daily
-    backtest(stock_list, start_date, end_date,
+    backtest(asset_list, start_date, end_date,
              resolution, 'all', portfolio, strategy_list)
 
 
@@ -180,3 +184,4 @@ if __name__ == "__main__":
         datefmt='%Y-%m-%d:%H:%M:%S',
         level=logging.INFO)
     backtest_stocks()
+    # backtest_crypto()

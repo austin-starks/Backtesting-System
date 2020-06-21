@@ -95,7 +95,7 @@ class StockStrategy(object):
     """
 
     def __init__(self, name, data, buying_allocation=0.05, buying_allocation_type='percent_portfolio', maximum_allocation=1.0, buying_delay=1,
-                 selling_allocation=0.1):
+                 selling_allocation=0.1, assets='stocks'):
         self._name = name
         self._buying_conditions = []
         self._selling_conditions = []
@@ -108,6 +108,7 @@ class StockStrategy(object):
         self._last_purchase = None
         self._last_price = None
         self._last_sale = None
+        self._assets = assets
 
     def get_dataframe(self):
         """
@@ -161,7 +162,10 @@ class StockStrategy(object):
         """
         Returns: the current price of the stock at this date and time
         """
-        return round(self._data.loc[str(date)].loc[str(time)], 2)
+        if self._assets == 'stocks':
+            return round(self._data.loc[str(date)].loc[str(time)], 2)
+        else:
+            return self._data.loc[f'{date} {time}'].loc['Open']
 
     def buying_conditions_are_met(self, date, time):
         """
@@ -170,7 +174,7 @@ class StockStrategy(object):
         abool = False
         self._last_price = self.get_stock_price(date, time)
         for condition in self._buying_conditions:
-            if condition.is_true(date, time):
+            if condition.is_true(date, time, self._assets):
                 abool = True
                 break
         return abool and (self._last_purchase is None or self._last_purchase[0] + timedelta(self._delay) <= date)
@@ -181,7 +185,7 @@ class StockStrategy(object):
         """
         abool = False
         for condition in self._selling_conditions:
-            if condition.is_true(date, time):
+            if condition.is_true(date, time, self._assets):
                 abool = True
                 break
         return abool

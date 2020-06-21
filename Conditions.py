@@ -51,7 +51,7 @@ class TimePeriodCondition(Condition):
         """
         Warms-p changing_data to be prefilled with values.
         """
-        if len(self._changing_data) == 0:
+        if self._changing_data.empty:
             dataframe = self.get_data()
             today = datapoint.name
             if type(today) == pd._libs.tslibs.timestamps.Timestamp:
@@ -87,15 +87,11 @@ class IsLowForPeriod(TimePeriodCondition):
     def __init__(self, data, portfolio, sd=0, week_length=5):
         super().__init__(data, portfolio, sd, week_length)
 
-    def is_true(self, current_date, current_time):
+    def is_true_stocks(self, current_date, current_time):
         """
-        Returns: True if this condition is true, False otherwise
+        Helper function for is_true for handling stock data 
         """
-        # print(self._changing_data)
         dataframe = self.get_data()
-        abool = True
-
-        # print("is_true")
         abool = False
         try:
             today = dataframe.loc[str(current_date)]
@@ -112,9 +108,15 @@ class IsLowForPeriod(TimePeriodCondition):
             if current_time.is_eod():
                 self.add_datapoint(today)
         except KeyError:
-            # print("Keyerror", str(current_date))
             pass
         return abool
+
+    def is_true(self, current_date, current_time, assets):
+        """
+        Returns: True if this condition is true, False otherwise
+        """
+        if assets == 'stocks':
+            return self.is_true_stocks(current_date, current_time)
 
 
 class IsHighForPeriod(TimePeriodCondition):
@@ -126,14 +128,12 @@ class IsHighForPeriod(TimePeriodCondition):
     def __init__(self, data, portfolio, sd=0, week_length=5):
         super().__init__(data, portfolio, sd, week_length)
 
-    def is_true(self, current_date, current_time):
+    def is_true_stocks(self, current_date, current_time):
         """
-        Returns: True if this condition is true, False otherwise
+        Helper function for is_true for handling stock data 
         """
-        # print(self._changing_data)
         dataframe = self.get_data()
         abool = True
-
         # print("is_true")
         abool = False
         try:
@@ -154,3 +154,10 @@ class IsHighForPeriod(TimePeriodCondition):
             # print("Keyerror", str(current_date))
             pass
         return abool
+
+    def is_true(self, current_date, current_time, assets):
+        """
+        Returns: True if this condition is true, False otherwise
+        """
+        if assets == 'stocks':
+            return self.is_true_stocks(current_date, current_time)
