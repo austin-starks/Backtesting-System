@@ -66,7 +66,11 @@ def backtest_buy(stock_name, stock_strategy, current_date, current_time, portfol
 
 
 def backtest_sell(stock_name, stock_strategy, current_date, current_time, portfolio, stock_data):
-    if portfolio.contains(stock_name) and stock_strategy.selling_conditions_are_met(current_date, current_time):
+    if stock_strategy.must_be_profitable():
+        is_profitable = portfolio.is_profitable(current_date, current_time)
+    else:
+        is_profitable = True
+    if portfolio.contains(stock_name) and stock_strategy.selling_conditions_are_met(current_date, current_time, is_profitable):
         sell_success = portfolio.sell(
             stock_name, stock_strategy, current_date, current_time)
         if sell_success:
@@ -89,17 +93,20 @@ def backtest_loop(asset_list, state, resolution, date1_obj, day_delta, current_t
     if resolution == State.Resolution.Daily or resolution == State.Resolution.DAILY:
         try:
             current_date = date1_obj + timedelta(days=day_delta)
+            # print("backtest_loop", current_date, current_time)
+
             backtest_loop_helper(
                 asset_list, current_date, current_time, state)
         except KeyError:
             pass
     elif resolution == State.Resolution.Hourly or resolution == State.Resolution.HOURLY:
         current_date = date1_obj + timedelta(days=day_delta)
+        # print("backtest_loop", current_date, current_time)
         backtest_loop_helper(
             asset_list, current_date, current_time, state)
     else:
         Helper.log_error(f"resolution {resolution} unimplemented")
-        current_time.forward_time(resolution)
+    current_time.forward_time(resolution)
 
 
 def backtest(asset_list, start_date, end_date, resolution, days, portfolio, strategy_list):
@@ -136,32 +143,11 @@ def insert_strategy_list_stocks(asset_list, portfolio):
             [Conditions.IsLowForPeriod(df, portfolio, 0)])
         stock_strategy.set_selling_conditions([
             Conditions.IsHighForPeriod(df, portfolio, 2)])
-
-        # stock_strategy = State.StockStrategy(
-        #     stock, df, buying_allocation=0.25, maximum_allocation=0.25)
-        # stock_strategy.set_buying_conditions(
-        #     [Conditions.IsLowForPeriod(df, portfolio, 0)])
-        # stock_strategy.set_selling_conditions([])
-
         strategy_list.append(stock_strategy)
     return strategy_list
 
 
-def insert_strategy_list_crypto(crypto_list, portfolio):
-    strategy_list = []
-    for crypto in crypto_list:
-        df = load_crypto_data(crypto)
-        stock_strategy = State.StockStrategy(
-            crypto, df, buying_allocation=0.30, selling_allocation=.10, buying_allocation_type='percent_bp', assets='crypto')
-        stock_strategy.set_buying_conditions(
-            [Conditions.IsLowForPeriod(df, portfolio, 0)])
-        stock_strategy.set_selling_conditions([
-            Conditions.IsHighForPeriod(df, portfolio, 2)])
-        strategy_list.append(stock_strategy)
-    return strategy_list
-
-
-def backtest_stocks(asset_list=["NVDA", "AMD", "DPZ"], start_date='2020-01-01', end_date='2020-06-18'):
+def backtest_stocks(asset_list=["NVDA"], start_date='2020-01-01', end_date='2020-06-18'):
     portfolio = State.Portfolio()
     strategy_list = insert_strategy_list_stocks(asset_list, portfolio)
     resolution = State.Resolution.Daily
@@ -169,8 +155,25 @@ def backtest_stocks(asset_list=["NVDA", "AMD", "DPZ"], start_date='2020-01-01', 
              resolution, 'all', portfolio, strategy_list)
 
 
-def backtest_crypto(crypto_list=['BTC'], start_date='2020-01-01', end_date='2020-06-18'):
-    portfolio = State.Portfolio()
+def insert_strategy_list_crypto(crypto_list, portfolio):
+    strategy_list = []
+    for crypto in crypto_list:
+        df = load_crypto_data(crypto)
+        stock_strategy = State.StockStrategy(
+            crypto, df, buying_allocation=0.08, selling_allocation=.16,
+            buying_allocation_type='percent_bp', must_be_profitable_to_sell=True, assets='crypto')
+        stock_strategy.set_buying_conditions([
+            Conditions.IsLowForPeriod(df, portfolio, -6, week_length=30)
+        ])
+        stock_strategy.set_selling_conditions([
+            Conditions.IsHighForPeriod(df, portfolio, 6, week_length=30)
+        ])
+        strategy_list.append(stock_strategy)
+    return strategy_list
+
+
+def backtest_crypto(crypto_list=['BTC'], start_date='2018-05-10', end_date='2020-06-05'):
+    portfolio = State.Portfolio(initial_cash=5000, trading_fees=2.00)
     strategy_list = insert_strategy_list_crypto(crypto_list, portfolio)
     resolution = State.Resolution.Hourly
     backtest(crypto_list, start_date, end_date,
@@ -183,5 +186,5 @@ if __name__ == "__main__":
         format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
         datefmt='%Y-%m-%d:%H:%M:%S',
         level=logging.INFO)
-    backtest_stocks()
-    # backtest_crypto()
+    # backtest_stocks()
+    backtest_crypto()

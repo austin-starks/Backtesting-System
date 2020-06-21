@@ -95,7 +95,7 @@ class StockStrategy(object):
     """
 
     def __init__(self, name, data, buying_allocation=0.05, buying_allocation_type='percent_portfolio', maximum_allocation=1.0, buying_delay=1,
-                 selling_allocation=0.1, assets='stocks'):
+                 selling_allocation=0.1, assets='stocks', must_be_profitable_to_sell=False):
         self._name = name
         self._buying_conditions = []
         self._selling_conditions = []
@@ -109,6 +109,13 @@ class StockStrategy(object):
         self._last_price = None
         self._last_sale = None
         self._assets = assets
+        self._must_be_profitable = must_be_profitable_to_sell
+
+    def must_be_profitable(self):
+        """
+        Returns: whether or not the portfolio must be profitable to sell. 
+        """
+        return self._must_be_profitable
 
     def get_dataframe(self):
         """
@@ -173,22 +180,28 @@ class StockStrategy(object):
         """
         abool = False
         self._last_price = self.get_stock_price(date, time)
+        # print('price', date, time, self._last_price)
         for condition in self._buying_conditions:
+            # print("is_true", condition.is_true(date, time, self._assets))
+            # print(date, time, self._assets)
             if condition.is_true(date, time, self._assets):
                 abool = True
                 break
         return abool and (self._last_purchase is None or self._last_purchase[0] + timedelta(self._delay) <= date)
 
-    def selling_conditions_are_met(self, date, time):
+    def selling_conditions_are_met(self, date, time, is_profitable=True):
         """
         Returns: True if selling conditions are met; False otherwise
         """
         abool = False
         for condition in self._selling_conditions:
             if condition.is_true(date, time, self._assets):
-                abool = True
+                if self._must_be_profitable:
+                    abool = is_profitable
+                else:
+                    abool = True
                 break
-        return abool
+        return abool and (self._last_sale is None or self._last_sale[0] + timedelta(self._delay) <= date)
 
     def get_buying_allocation(self):
         """
@@ -214,18 +227,29 @@ class StockStrategy(object):
         """
         return self._selling_allocation_for_stock
 
+    def get_asset_type(self):
+        """
+        Returns: The asset type of this strategy
+        """
+        return self._assets
+
     @staticmethod
     def get_stock_price_static(df, date, time):
         """
         Returns: the current price of the stock at this date and time
         """
-        i = 0
-        while True:
-            delta = timedelta(days=i)
-            try:
-                return round(df.loc[str(date + delta)].loc[str(time)], 2)
-            except:
-                i -= 1
+        if not 'Symbol' in df:
+            i = 0
+            while True:
+                delta = timedelta(days=i)
+                try:
+                    return round(df.loc[str(date + delta)].loc[str(time)], 2)
+                except KeyError:
+                    i -= 1
+                    if i < -10:
+                        raise KeyError
+        else:
+            return df.loc[str(date) + " " + str(time)].loc['Open']
 
 
 class Portfolio(object):
@@ -243,7 +267,6 @@ class Portfolio(object):
         self._buying_power = initial_cash
         self._margin = 0  # will add margin later
         self._current_holdings = current_holdings
-        self._past_holdings = past_holdings
         self._fees = trading_fees
         self._conditions = []
         self._strategies = dict()
@@ -277,6 +300,12 @@ class Portfolio(object):
                 holdings_df, date, time)
             holdings_value += holding.get_num_assets() * holdings_price
         return self.get_buying_power() + holdings_value
+
+    def is_profitable(self, date, time):
+        """
+        Returns: True if the portfolio is overall profitable. False otherwise.
+        """
+        return self.get_portfolio_value(date, time) > self._initial_value
 
     def contains(self, asset):
         """
@@ -358,6 +387,50 @@ class Portfolio(object):
         """
         self._strategies[strategy.get_asset_name()] = strategy.get_dataframe()
 
+    def shares_to_buy(self, stock_strategy, buying_allocation, date, time, last_price):
+        """
+        Calculates the number of shares to buy
+        """
+        asset_type = stock_strategy.get_asset_type()
+        type_allo = type(buying_allocation)
+        buying_allo_type = stock_strategy.get_buying_allocation_type()
+        if asset_type == 'stocks':
+            if type_allo == int:
+                dollars_to_spend = buying_allocation * last_price
+                num_shares = buying_allocation
+            elif type_allo == float:
+                if buying_allo_type == 'percent_portfolio':
+                    dollars_to_spend = self.get_portfolio_value(
+                        date, time)*buying_allocation
+                    num_shares = int(dollars_to_spend // last_price)
+                elif buying_allo_type == 'percent_bp':
+                    dollars_to_spend = self.get_buying_power()*buying_allocation
+                    num_shares = int(dollars_to_spend // last_price)
+                else:
+                    Helper.log_error("Invalid buying allocation type")
+            else:
+                Helper.log_error(
+                    f"Buying allocation should be an int or float")
+            return num_shares, num_shares*last_price
+        elif asset_type == 'crypto':
+            if type_allo == int:
+                dollars_to_spend = buying_allocation * last_price
+                num_shares = buying_allocation
+            elif type_allo == float:
+                if buying_allo_type == 'percent_portfolio':
+                    dollars_to_spend = self.get_portfolio_value(
+                        date, time)*buying_allocation
+                    num_shares = dollars_to_spend / last_price
+                elif buying_allo_type == 'percent_bp':
+                    dollars_to_spend = self.get_buying_power()*buying_allocation
+                    num_shares = dollars_to_spend / last_price
+                else:
+                    Helper.log_error("Invalid buying allocation type")
+            else:
+                Helper.log_error(
+                    f"Buying allocation should be an int or float")
+            return num_shares, dollars_to_spend
+
     def buy(self, stock, stock_strategy, date, time):
         """
         Buys stock according to the stock strategy. If buying allocation (in stock strategy)
@@ -368,27 +441,11 @@ class Portfolio(object):
         """
         abool = False
         buying_allocation = stock_strategy.get_buying_allocation()
-        buying_allo_type = stock_strategy.get_buying_allocation_type()
         max_allocation = stock_strategy.get_maximum_allocation()
         last_price = stock_strategy.get_stock_price(date, time)
-        type_allo = type(buying_allocation)
-        if type_allo == int:
-            dollars_to_spend = buying_allocation * last_price
-            num_shares = buying_allocation
-        elif type_allo == float:
-            if buying_allo_type == 'percent_portfolio':
-                dollars_to_spend = self.get_portfolio_value(
-                    date, time)*buying_allocation
-                num_shares = int(dollars_to_spend // last_price)
-            elif buying_allo_type == 'percent_bp':
-                dollars_to_spend = self.get_buying_power()*buying_allocation
-                num_shares = int(dollars_to_spend // last_price)
-            else:
-                Helper.log_error("Invalid buying allocation type")
-        else:
-            Helper.log_error(f"Buying allocation should be an int or float")
+        num_shares, total_price = self.shares_to_buy(
+            stock_strategy, buying_allocation, date, time, last_price)
         buying_power = self.get_buying_power()
-        total_price = num_shares*last_price
         if self.get_current_allocation(stock, last_price, date, time) + total_price > \
                 max_allocation * self.get_portfolio_value(date, time):
             Helper.log_warn(
@@ -408,24 +465,34 @@ class Portfolio(object):
         """
         Sells stock according to the stock_strategy
         """
+        asset_type = stock_strategy.get_asset_type()
         last_price = stock_strategy.get_stock_price(date, time)
         # print("last price", last_price)
         current_value_holdings = self.get_current_allocation(
             stock, last_price, date, time)
         selling_allocation = stock_strategy.get_selling_allocation()
-        # print("selling allo", selling_allocation)
-        estimated_shares_gain = selling_allocation * current_value_holdings
-        shares_to_sell = int(estimated_shares_gain // last_price)
-        exact_shares_gain = shares_to_sell * last_price
-        # print('current_value_holdings', current_value_holdings)
-        # print('estimated_shares_gain', estimated_shares_gain)
-        # print('exact_shares_gain', exact_shares_gain)
-        # print('shares to sell', shares_to_sell)
-        self.increase_buying_power(exact_shares_gain)
-        self.subtract_holdings(stock, shares_to_sell)
-        Helper.log_info(
-            f"Sold {shares_to_sell} {stock} shares on {date} at {time} for ${last_price} per share.")
-        return True
+        if asset_type == 'stocks':
+            # print("selling allo", selling_allocation)
+            estimated_shares_gain = selling_allocation * current_value_holdings
+            shares_to_sell = int(estimated_shares_gain // last_price)
+            exact_shares_gain = shares_to_sell * last_price
+            # print('current_value_holdings', current_value_holdings)
+            # print('estimated_shares_gain', estimated_shares_gain)
+            # print('exact_shares_gain', exact_shares_gain)
+            # print('shares to sell', shares_to_sell)
+            self.increase_buying_power(exact_shares_gain)
+            self.subtract_holdings(stock, shares_to_sell)
+            Helper.log_info(
+                f"Sold {shares_to_sell} {stock} shares on {date} at {time} for ${last_price} per share.")
+            return True
+        elif asset_type == 'crypto':
+            exact_shares_gain = selling_allocation * current_value_holdings
+            shares_to_sell = exact_shares_gain / last_price
+            self.increase_buying_power(exact_shares_gain)
+            self.subtract_holdings(stock, shares_to_sell)
+            Helper.log_info(
+                f"Sold {shares_to_sell} {stock} shares on {date} at {time} for ${last_price} per share.")
+            return True
 
 
 class Resolution(IntFlag):
