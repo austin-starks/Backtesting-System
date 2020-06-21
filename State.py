@@ -39,32 +39,32 @@ class Holdings(object):
     """
     A class representing a holding
 
-    This class contains information about currently held assets including the cost, the type 
+    This class contains information about currently held assets including the cost, the type
     of asset, and how much the person owns
     """
 
     def __init__(self, stock, num_assets, type_asset="Stock"):
-        self._stock_name = stock
+        self._asset_name = stock
         self._num_assets = num_assets
         self._type = type_asset
 
     def __hash__(self):
-        return hash(self._stock_name + self._type)
+        return hash(self._asset_name + self._type)
 
     def __eq__(self, other):
-        return self._stock_name == other._stock_name and self._type == other._type
+        return self._asset_name == other._asset_name and self._type == other._type
 
     def __str__(self):
-        return "(" + self._stock_name + " | Num assets: " + str(self._num_assets) + ")"
+        return "(" + self._asset_name + " | Num assets: " + str(self._num_assets) + ")"
 
     def __repr__(self):
-        return "(" + self._stock_name + " | Num assets: " + str(self._num_assets) + ")"
+        return "(" + self._asset_name + " | Num assets: " + str(self._num_assets) + ")"
 
     def get_name(self):
         """
         Returns: the name of the holdings
         """
-        return self._stock_name
+        return self._asset_name
 
     def get_num_assets(self):
         """
@@ -94,12 +94,13 @@ class StockStrategy(object):
     between deploying the strategy can it be deployed again
     """
 
-    def __init__(self, name, data, buying_allocation=0.05, maximum_allocation=1.0, buying_delay=1,
+    def __init__(self, name, data, buying_allocation=0.05, buying_allocation_type='percent_portfolio', maximum_allocation=1.0, buying_delay=1,
                  selling_allocation=0.1):
         self._name = name
         self._buying_conditions = []
         self._selling_conditions = []
         self._buying_allocation_for_stock = buying_allocation
+        self._buying_alloation_type = buying_allocation_type
         self._maximum_allocation_for_stock = maximum_allocation
         self._selling_allocation_for_stock = selling_allocation
         self._data = data
@@ -114,7 +115,7 @@ class StockStrategy(object):
         """
         return self._data
 
-    def get_stock_name(self):
+    def get_asset_name(self):
         """
         Returns: the buying conditions for this stock strategy
         """
@@ -190,6 +191,12 @@ class StockStrategy(object):
         Returns: The buying allocatin for this strategy
         """
         return self._buying_allocation_for_stock
+
+    def get_buying_allocation_type(self):
+        """
+        Returns: The buying allocatin for this strategy
+        """
+        return self._buying_alloation_type
 
     def get_maximum_allocation(self):
         """
@@ -267,23 +274,23 @@ class Portfolio(object):
             holdings_value += holding.get_num_assets() * holdings_price
         return self.get_buying_power() + holdings_value
 
-    def contains(self, stock):
+    def contains(self, asset):
         """
         Returns: True if this portfolio contains stock. False otherwise.
         """
         for holding in self._current_holdings:
-            if holding.get_name() == stock:
+            if holding.get_name() == asset:
                 return True
         return False
 
-    def get_current_allocation(self, stock, last_price, date, time):
+    def get_current_allocation(self, asset, last_price, date, time):
         """
         Returns: the percent of the portfolio that this stock makes up.
         """
-        if self.contains(stock):
+        if self.contains(asset):
             holdings_value = 0.0
             for holding in self._current_holdings:
-                if holding.get_name() == stock:
+                if holding.get_name() == asset:
                     holdings_value += holding.get_num_assets() * last_price
             return holdings_value
         else:
@@ -316,7 +323,7 @@ class Portfolio(object):
 
     def subtract_holdings(self, stock, num_shares):
         """
-        Subtravts the holdings to the portfolio
+        Subtract the holdings to the portfolio
         """
         new_holding = Holdings(stock, num_shares)
         if new_holding in self._current_holdings:
@@ -345,18 +352,19 @@ class Portfolio(object):
         """
         Adds the stock strategy to this portfolio
         """
-        self._strategies[strategy.get_stock_name()] = strategy.get_dataframe()
+        self._strategies[strategy.get_asset_name()] = strategy.get_dataframe()
 
     def buy(self, stock, stock_strategy, date, time):
         """
-        Buys stock according to the stock strategy. If buying allocation (in stock strategy) 
-        is an int, it will buy that many shares. Otherwise, it'll buy that percent of the 
+        Buys stock according to the stock strategy. If buying allocation (in stock strategy)
+        is an int, it will buy that many shares. Otherwise, it'll buy that percent of the
         portfolio worth of the stock.
 
         Returns: True if the buy is succcessful. False otherwise
         """
         abool = False
         buying_allocation = stock_strategy.get_buying_allocation()
+        buying_allo_type = stock_strategy.get_buying_allocation_type()
         max_allocation = stock_strategy.get_maximum_allocation()
         last_price = stock_strategy.get_stock_price(date, time)
         type_allo = type(buying_allocation)
@@ -364,9 +372,15 @@ class Portfolio(object):
             dollars_to_spend = buying_allocation * last_price
             num_shares = buying_allocation
         elif type_allo == float:
-            dollars_to_spend = self.get_portfolio_value(
-                date, time)*buying_allocation
-            num_shares = int(dollars_to_spend // last_price)
+            if buying_allo_type == 'percent_portfolio':
+                dollars_to_spend = self.get_portfolio_value(
+                    date, time)*buying_allocation
+                num_shares = int(dollars_to_spend // last_price)
+            elif buying_allo_type == 'percent_bp':
+                dollars_to_spend = self.get_buying_power()*buying_allocation
+                num_shares = int(dollars_to_spend // last_price)
+            else:
+                Helper.log_error("Invalid buying allocation type")
         else:
             Helper.log_error(f"Buying allocation should be an int or float")
         buying_power = self.get_buying_power()
@@ -417,37 +431,45 @@ class Resolution(IntFlag):
     This Enum contains a list of data resolutions to analyze data from. The resolution can be in the magnitude of days
     (trading at open or at close), or can be in the timespan of minutes.
     """
-    DAYS = 2
+    Daily = 2
+    DAILY = 2
+    Hourly = 24
+    HOURLY = 24
 
     @staticmethod
     def time_init(resolution):
-        if resolution == Resolution.DAYS:
+        if resolution == Resolution.Daily:
             return 'Open'
         assert False
 
     @staticmethod
     def forward_time(time, resolution):
-        if resolution == Resolution.DAYS:
+        if resolution == Resolution.Daily:
             if time == 'Open':
                 return 'Close'
             else:
                 return "Open"
-        assert False
+        Helper.log_error(f"Unimplemented resolution {resolution}")
 
 
 class Time(object):
     """
-    A class representing the current
+    A class representing the current time
     """
-    resolution_dict = {Resolution.DAYS: ["Open", "Close"]}
+    resolution_dict = {
+        Resolution.Daily: ["Open", "Close"],
+        Resolution.Hourly: ['12-AM', '01-AM', '02-AM', '03-AM', '04-AM', '05-AM', '06-AM', '07-AM', '08-AM', '09-AM',
+                            '10-AM', '11-AM', '12-PM', '01-PM', '02-PM', '03-PM', '04-PM', '05-PM', '06-PM', '07-PM',
+                            '08-PM', '09-PM', '10-PM', '11-PM']
+    }
 
     def __init__(self, resolution):
         self._time = Time.resolution_dict[resolution]
         self._time_index = 0
 
-    def forward_time(self):
+    def forward_time(self, resolution):
         self._time_index += 1
-        self._time_index %= 2
+        self._time_index %= resolution
 
     def __str__(self):
         return self._time[self._time_index]
