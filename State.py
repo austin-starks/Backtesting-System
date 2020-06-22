@@ -28,11 +28,11 @@ class BacktestingState(object):
         """
         return self._portfolio
 
-    def get_portfolio_snapshot(self, date, time):
+    def get_portfolio_snapshot(self, date, time, HODL_percent=None):
         """
         Returns: a snapshot of the portfolio
         """
-        return self._portfolio.snapshot(date, time)
+        return self._portfolio.snapshot(date, time, HODL_percent)
 
 
 class Holdings(object):
@@ -94,14 +94,15 @@ class StockStrategy(object):
     between deploying the strategy can it be deployed again
     """
 
-    def __init__(self, name, data, buying_allocation=0.05, buying_allocation_type='percent_portfolio', maximum_allocation=1.0, buying_delay=1,
-                 selling_allocation=0.1, assets='stocks', must_be_profitable_to_sell=False):
+    def __init__(self, name, data, buying_allocation=0.05, buying_allocation_type='percent_portfolio', maximum_allocation=1.0,
+                 minimum_allocation=0.0, buying_delay=1, selling_allocation=0.1, assets='stocks', must_be_profitable_to_sell=False):
         self._name = name
         self._buying_conditions = []
         self._selling_conditions = []
         self._buying_allocation_for_stock = buying_allocation
-        self._buying_alloation_type = buying_allocation_type
+        self._buying_allocation_type = buying_allocation_type
         self._maximum_allocation_for_stock = maximum_allocation
+        self._minimum_allocation_for_stock = minimum_allocation
         self._selling_allocation_for_stock = selling_allocation
         self._data = data
         self._delay = buying_delay
@@ -178,12 +179,9 @@ class StockStrategy(object):
         """
         Returns: True if buying conditions are met; False otherwise
         """
-        abool = True
+        abool = False if self._buying_conditions == [] else True
         self._last_price = self.get_stock_price(date, time)
-        # print('price', date, time, self._last_price)
         for condition in self._buying_conditions:
-            # print("is_true", condition.is_true(date, time, self._assets))
-            # print(date, time, self._assets)
             abool = abool and condition.is_true(date, time, self._assets)
 
         return abool and (self._last_purchase is None or self._last_purchase[0] + timedelta(self._delay) <= date)
@@ -192,7 +190,7 @@ class StockStrategy(object):
         """
         Returns: True if selling conditions are met; False otherwise
         """
-        abool = True
+        abool = False if self._selling_conditions == [] else True
         for condition in self._selling_conditions:
             if self._must_be_profitable:
                 abool = abool and condition.is_true(
@@ -209,19 +207,25 @@ class StockStrategy(object):
 
     def get_buying_allocation_type(self):
         """
-        Returns: The buying allocatin for this strategy
+        Returns: The buying allocation for this strategy
         """
-        return self._buying_alloation_type
+        return self._buying_allocation_type
 
     def get_maximum_allocation(self):
         """
-        Returns: The buying allocatin for this strategy
+        Returns: The maximum allocation for this strategy
         """
         return self._maximum_allocation_for_stock
 
+    def get_minimum_allocation(self):
+        """
+        Returns: The minimum allocation for this strategy
+        """
+        return self._minimum_allocation_for_stock
+
     def get_selling_allocation(self):
         """
-        Returns: The buying allocatin for this strategy
+        Returns: The selling allocation for this strategy
         """
         return self._selling_allocation_for_stock
 
@@ -270,16 +274,40 @@ class Portfolio(object):
         self._conditions = []
         self._strategies = dict()
 
-    def snapshot(self, date, time):
+    def snapshot(self, date, time, HODL_percent=None):
         """
         Returns: a snapshot of the portfolio
         """
         value = self.get_portfolio_value(date, time)
         percent_change = round(
             100 * (value - self._initial_value) / self._initial_value, 2)
-        return f"Snapshot:\nInitial Value: {self._initial_value}\nCurrent Value: {value}" + \
-            f"\nBuying Power: {self.get_buying_power()}\nCurrent Holdings: {self._current_holdings}\n" + \
-            f"Percent Change from Start: {percent_change}%"
+        if HODL_percent == None:
+            return f"Snapshot:\nInitial Value: {self._initial_value}\nCurrent Value: {value}" + \
+                f"\nBuying Power: {self.get_buying_power()}\nCurrent Holdings: {self._current_holdings}\n" + \
+                f"Percent Change from Start: {percent_change}%"
+        else:
+            return f"Snapshot:\nInitial Value: {self._initial_value}\nCurrent Value: {value}" + \
+                f"\nBuying Power: {self.get_buying_power()}\nCurrent Holdings: {self._current_holdings}\n" + \
+                f"Percent Change from Start: {percent_change}%\nPercent Change for HODL strategy: {HODL_percent}%"
+
+    def calculate_HODL(self, asset_list, start_date, end_date, current_time):
+        """
+        Returns: the percent gain if the asset list was equally invested in HODL from the beginning.
+        """
+        tmp_dict = dict()
+        amount_per_asset = self._initial_value / len(asset_list)
+        for asset in asset_list:
+            df = self._strategies[asset]
+            asset_price = StockStrategy.get_stock_price_static(
+                df, start_date, current_time)
+            num_assets = amount_per_asset / asset_price
+            tmp_dict[asset] = num_assets
+        total = 0
+        for key in tmp_dict:
+            asset_price = StockStrategy.get_stock_price_static(
+                df, end_date, current_time)
+            total += tmp_dict[key] * asset_price
+        return round(100 * (total - self._initial_value) / self._initial_value, 2)
 
     def get_buying_power(self):
         """
@@ -492,34 +520,33 @@ class Portfolio(object):
         """
         Sells stock according to the stock_strategy
         """
+        abool = False
         asset_type = stock_strategy.get_asset_type()
         last_price = stock_strategy.get_stock_price(date, time)
-        # print("last price", last_price)
         current_value_holdings = self.get_current_allocation(
             stock, last_price, date, time)
         selling_allocation = stock_strategy.get_selling_allocation()
         if asset_type == 'stocks':
-            # print("selling allo", selling_allocation)
             estimated_shares_gain = selling_allocation * current_value_holdings
             shares_to_sell = int(estimated_shares_gain // last_price)
             exact_shares_gain = shares_to_sell * last_price
-            # print('current_value_holdings', current_value_holdings)
-            # print('estimated_shares_gain', estimated_shares_gain)
-            # print('exact_shares_gain', exact_shares_gain)
-            # print('shares to sell', shares_to_sell)
-            self.increase_buying_power(exact_shares_gain)
-            self.subtract_holdings(stock, shares_to_sell, asset_type)
-            Helper.log_info(
-                f"Sold {shares_to_sell} {stock} shares on {date} at {time} for ${last_price} per share.")
-            return True
         elif asset_type == 'crypto':
             exact_shares_gain = selling_allocation * current_value_holdings
             shares_to_sell = exact_shares_gain / last_price
+        min_allo = stock_strategy.get_minimum_allocation()
+        portfolio_value = self.get_portfolio_value(date, time)
+        current_allo = self.get_current_allocation(
+            stock, last_price, date, time)
+        if current_allo - exact_shares_gain < min_allo * portfolio_value:
+            Helper.log_warn(
+                f"Portfolio currently has minimum allocation of {stock}")
+        else:
+            abool = True
             self.increase_buying_power(exact_shares_gain)
             self.subtract_holdings(stock, shares_to_sell, asset_type)
             Helper.log_info(
                 f"Sold {shares_to_sell} {stock} shares on {date} at {time} for ${last_price} per share.")
-            return True
+        return abool
 
 
 class Resolution(IntFlag):
@@ -576,6 +603,4 @@ class Time(object):
         return self._time[self._time_index]
 
     def is_eod(self):
-        # print("time index", self._time_index,
-        #       "len(self._time) - 1", len(self._time) - 1)
         return self._time_index == len(self._time) - 1
