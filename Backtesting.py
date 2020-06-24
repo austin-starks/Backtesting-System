@@ -7,8 +7,20 @@ import time
 import logging
 import Helper
 import State
+import os
 import os.path
 import Conditions
+
+
+def clear_logs():
+    directory = 'logs'
+    filelist = [name for name in os.listdir(
+        directory) if os.path.isfile(os.path.join(directory, name))]
+    len_list = len(filelist)
+    if len_list > 10:
+        for i in range(len_list - 5):
+            filename = os.path.join(directory, filelist[i])
+            os.remove(filename)
 
 
 def load_stock_data(stock):
@@ -90,18 +102,16 @@ def backtest_loop_helper(asset_list, current_date, current_time, state):
 
 
 def backtest_loop(asset_list, state, resolution, date1_obj, day_delta, current_time, current_epoch):
+    current_date = date1_obj + timedelta(days=day_delta)
+    state.save_portfolio_value_to_df(current_date, current_time, asset_list)
+
     if resolution == State.Resolution.Daily or resolution == State.Resolution.DAILY:
         try:
-            current_date = date1_obj + timedelta(days=day_delta)
-            # print("backtest_loop", current_date, current_time)
-
             backtest_loop_helper(
                 asset_list, current_date, current_time, state)
         except KeyError:
             pass
     elif resolution == State.Resolution.Hourly or resolution == State.Resolution.HOURLY:
-        current_date = date1_obj + timedelta(days=day_delta)
-        # print("backtest_loop", current_date, current_time)
         backtest_loop_helper(
             asset_list, current_date, current_time, state)
     else:
@@ -109,8 +119,9 @@ def backtest_loop(asset_list, state, resolution, date1_obj, day_delta, current_t
     current_time.forward_time(resolution)
 
 
-def backtest(asset_list, start_date, end_date, resolution, days, portfolio, strategy_list):
+def backtest(asset_list, start_date, end_date, resolution, days, state, strategy_list):
     Helper.log_info("Starting Backtest")
+    portfolio = state.get_portfolio()
     check_backtest_preconditions(start_date, end_date, resolution, days)
     if days == 'All' or days == 'all':
         date1 = [int(x) for x in re.split(r'[\-]', start_date)]
@@ -121,7 +132,6 @@ def backtest(asset_list, start_date, end_date, resolution, days, portfolio, stra
     elif type(days) == int and days > 0:
         epochs = days
     epochs, current_epoch = epochs * resolution, 0
-    state = State.BacktestingState(portfolio, strategy_list)
     current_time = State.Time(resolution)
     while current_epoch <= epochs:
         day_delta = current_epoch // resolution
@@ -149,12 +159,17 @@ def insert_strategy_list_stocks(asset_list, portfolio):
     return strategy_list
 
 
-def backtest_stocks(asset_list=["NVDA"], start_date='2020-01-01', end_date='2020-06-18'):
+def backtest_stocks(asset_list=["NVDA"], start_date='2020-01-01', end_date='2020-02-18'):
     portfolio = State.Portfolio()
+    date1 = [int(x) for x in re.split(r'[\-]', start_date)]
+    date1_obj = date(date1[0], date1[1], date1[2])
     strategy_list = insert_strategy_list_stocks(asset_list, portfolio)
+    state = State.BacktestingState(
+        portfolio, strategy_list, date1_obj, State.Resolution.Daily)
+
     resolution = State.Resolution.Daily
     backtest(asset_list, start_date, end_date,
-             resolution, 'all', portfolio, strategy_list)
+             resolution, 'all', state, strategy_list)
 
 
 def insert_strategy_list_crypto(crypto_list, portfolio):
@@ -162,32 +177,40 @@ def insert_strategy_list_crypto(crypto_list, portfolio):
     for crypto in crypto_list:
         df = load_crypto_data(crypto)
         stock_strategy = State.StockStrategy(
-            crypto, df, buying_allocation=0.08, selling_allocation=.16,
-            buying_allocation_type='percent_bp', must_be_profitable_to_sell=True, assets='crypto')
+            crypto, df, buying_allocation=0.2/len(crypto_list), selling_allocation=.10,
+            buying_allocation_type='percent_bp', must_be_profitable_to_sell=True, assets='crypto',
+            buying_delay=3)
         stock_strategy.set_buying_conditions([
-            Conditions.IsLowForPeriod(df, portfolio, -6, week_length=30)
+            Conditions.IsLowForPeriod(df, portfolio, -2, week_length=5)
         ])
         stock_strategy.set_selling_conditions([
-            Conditions.IsHighForPeriod(df, portfolio, 6, week_length=30)
+            Conditions.IsHighForPeriod(df, portfolio, 2, week_length=5)
         ])
         strategy_list.append(stock_strategy)
     return strategy_list
 
 
-def backtest_crypto(crypto_list=['BTC'], start_date='2018-05-10', end_date='2020-06-05'):
-    portfolio = State.Portfolio(initial_cash=3000, trading_fees=2.00)
-    initial_holdings = []
-    for crypto in crypto_list:
-        initial_holdings.append(
-            ('BTC', 0.25, "crypto", load_crypto_data(crypto)))
-    portfolio.add_initial_holdings(initial_holdings, start_date)
+def backtest_crypto(crypto_list=['ETH', 'BTC'], start_date='2019-12-10', end_date='2020-01-10'):
+    portfolio = State.Portfolio(initial_cash=4000, trading_fees=2.00)
     strategy_list = insert_strategy_list_crypto(crypto_list, portfolio)
+    date1 = [int(x) for x in re.split(r'[\-]', start_date)]
+    date1_obj = date(date1[0], date1[1], date1[2])
+    state = State.BacktestingState(
+        portfolio, strategy_list, date1_obj, State.Resolution.Hourly, allocation_hodl_dict={'BTC': 0.8, 'ETH': 0.2})
+
+    initial_holdings = []
     resolution = State.Resolution.Hourly
+    initial_holdings.append(
+        (crypto_list[0], 198, "crypto", load_crypto_data(crypto_list[0])))
+    initial_holdings.append(
+        (crypto_list[1], 798, "crypto", load_crypto_data(crypto_list[1])))
+    state.add_initial_holdings(initial_holdings, start_date, resolution)
     backtest(crypto_list, start_date, end_date,
-             resolution, 'all', portfolio, strategy_list)
+             resolution, 'all', state, strategy_list)
 
 
 if __name__ == "__main__":
+    clear_logs()
     logging.basicConfig(
         filename=f'logs/{datetime.now().strftime("%m-%d-%Y %H:%M:%S")}.log',
         format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',

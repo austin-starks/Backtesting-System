@@ -2,6 +2,7 @@ from enum import IntFlag
 import Conditions
 from datetime import date, timedelta
 import Helper
+import pandas as pd
 
 
 class BacktestingState(object):
@@ -12,9 +13,35 @@ class BacktestingState(object):
     a backtest
     """
 
-    def __init__(self, portfolio, strategy_list):
+    def __init__(self, portfolio, strategy_list, current_date, resolution, allocation_hodl_dict=None):
         self._portfolio = portfolio
         self._strategy_list = strategy_list
+        self._portfolio_history = pd.DataFrame()
+        current_time = str(Time(resolution))
+        self._initial_datetime = current_date, current_time
+        self._hodl_comparison_dict = dict()
+        self._allocation_dict = allocation_hodl_dict
+        self.set_compare_function()
+
+    def set_compare_function(self):
+        """
+        Sets a hodl strategy to compare against a stock strategy/
+        """
+        current_date, current_time = self._initial_datetime
+        for strategy in self._strategy_list:
+            name = strategy.get_asset_name()
+            if name in self._hodl_comparison_dict:
+                continue
+            price = strategy.get_stock_price(current_date, current_time)
+            self._hodl_comparison_dict[name] = self._portfolio.get_initial_value(
+            ) / price
+        len_holdings = len(self._hodl_comparison_dict)
+        for holding in self._hodl_comparison_dict:
+            if self._allocation_dict == None:
+                self._hodl_comparison_dict[holding] = self._hodl_comparison_dict[holding]/len_holdings
+            else:
+                self._hodl_comparison_dict[holding] = self._allocation_dict[holding] * \
+                    self._hodl_comparison_dict[holding]
 
     def get_strategy_list(self):
         """
@@ -33,6 +60,28 @@ class BacktestingState(object):
         Returns: a snapshot of the portfolio
         """
         return self._portfolio.snapshot(date, time, HODL_percent)
+
+    def save_portfolio_value_to_df(self, cur_date, cur_time, asset_list):
+        """
+        Adds the portfolio value (and HODL value)
+        """
+        # create dict:  {date: [value with strategy, value with HODL]}
+        pass
+
+    def add_initial_holdings(self, holding_list, date, resolution):
+        """
+        Adds the initial holdings to the protfolio in this state
+        """
+        # print('before', self._hodl_comparison_dict)
+        initial_value = self._portfolio.get_initial_value()
+        self._portfolio.add_initial_holdings(holding_list, date, resolution)
+        final_value = self._portfolio.get_initial_value()
+        percent_change = 1 + ((final_value - initial_value) / initial_value)
+        # print("p change", percent_change)
+        for holding_tup in holding_list:
+            self._hodl_comparison_dict[holding_tup[0]
+                                       ] = self._hodl_comparison_dict[holding_tup[0]] * percent_change
+        # print('after', self._hodl_comparison_dict)
 
 
 class Holdings(object):
@@ -111,6 +160,18 @@ class StockStrategy(object):
         self._last_sale = None
         self._assets = assets
         self._must_be_profitable = must_be_profitable_to_sell
+
+    def __str__(self):
+        """
+        The string representation of this strategy
+        """
+        return f"{self._name} Stock Strategy"
+
+    def __repr__(self):
+        """
+        The repr representation of this strategy
+        """
+        return f"{self._name} Stock Strategy"
 
     def must_be_profitable(self):
         """
@@ -274,6 +335,12 @@ class Portfolio(object):
         self._conditions = []
         self._strategies = dict()
 
+    def get_initial_value(self):
+        """
+        Returns: the intiial portfolio value
+        """
+        return self._initial_value
+
     def snapshot(self, date, time, HODL_percent=None):
         """
         Returns: a snapshot of the portfolio
@@ -304,9 +371,11 @@ class Portfolio(object):
             tmp_dict[asset] = num_assets
         total = 0
         for key in tmp_dict:
+            df = self._strategies[key]
             asset_price = StockStrategy.get_stock_price_static(
                 df, end_date, current_time)
-            total += tmp_dict[key] * asset_price
+            new_price = tmp_dict[key] * asset_price
+            total += new_price
         return round(100 * (total - self._initial_value) / self._initial_value, 2)
 
     def get_buying_power(self):
@@ -322,6 +391,7 @@ class Portfolio(object):
         holdings_value = 0.0
         for holding in self._current_holdings:
             holdings_name = holding.get_name()
+            # print(holdings_name[0])
             holdings_df = self._strategies[holdings_name]
             holdings_price = StockStrategy.get_stock_price_static(
                 holdings_df, date, time)
@@ -381,7 +451,7 @@ class Portfolio(object):
         else:
             self._current_holdings.append(new_holding)
 
-    def add_initial_holdings(self, holding_list, date):
+    def add_initial_holdings(self, holding_list, date, resolution):
         """
         Adds holding_list to the portfolio as an initial holding.
 
@@ -394,13 +464,17 @@ class Portfolio(object):
             holding_list[0][1]) == int, 'Number of holdings in the tuple must be number'
         assert type(holding_list[0][2]) == str, "Asset type must be a string"
         for holding_tup in holding_list:
-            self.add_holdings(holding_tup[0], holding_tup[1], holding_tup[2])
-            self._initial_value += holding_tup[1] * \
-                StockStrategy.get_stock_price_static(
-                    holding_tup[3], date, '12-AM')
+            price = StockStrategy.get_stock_price_static(
+                holding_tup[3], date, str(Time(resolution)))
+            if holding_tup[2] == 'crypto':
+                num_shares = holding_tup[1] / price
+            else:
+                num_shares = int(holding_tup[1] // price)
+            self.add_holdings(holding_tup[0], num_shares, holding_tup[2])
+            self._initial_value += (holding_tup[1] + self._fees)
             self.add_strategy_data_from_df(holding_tup[0], holding_tup[3])
             Helper.log_info(
-                f"Added {holding_tup[1]} {holding_tup[0]} shares to the initial portfolio.")
+                f"Added ${holding_tup[1]} of {holding_tup[0]} shares to the initial portfolio.")
 
     def subtract_holdings(self, stock, num_shares, asset_type):
         """

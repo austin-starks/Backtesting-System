@@ -100,8 +100,14 @@ class TimePeriodCondition(Condition):
         """
         Adds a datapoint to the changing data.
         """
+        # print("before", self._changing_week_data)
         self._changing_week_data = self._changing_week_data[1:]
-        self._changing_week_data.append(datapoint)
+        # print('during', self._changing_week_data)
+        self._changing_week_data = self._changing_week_data.append(datapoint)
+        # print('after', self._changing_week_data)
+        # print(datapoint)
+        if len(self._changing_week_data) < self._week_length:
+            assert False
 
 
 class IsLowForPeriod(TimePeriodCondition):
@@ -148,11 +154,16 @@ class IsLowForPeriod(TimePeriodCondition):
         self.warm_up_data_crypto(today)
         current_price = today.loc['Open']
         # if current price < lowest price in dataframe, abool = True
-        lowest_price = self._changing_week_data["Open"].min()
+        lowest_price = self._changing_week_data["Low"].min()
         # print("price + sd", current_price +
         #       (self._standard_deviation * self._changing_week_data["Close"].std()))
         # print("lowest price", lowest_price)
         if current_price < lowest_price + (self._standard_deviation * self._changing_week_data["Open"].std()):
+            # print(self._changing_week_data)
+            # print("low, ", lowest_price)
+            # print('std', self._standard_deviation *
+                #   self._changing_week_data["Open"].std())
+            # print("current, ", current_price)
             abool = True
         if current_time.is_eod():
             # print("is_eod", current_time)
@@ -209,7 +220,7 @@ class IsHighForPeriod(TimePeriodCondition):
         self.warm_up_data_crypto(today)
         current_price = today.loc['Open']
         # if current price < lowest price in dataframe, abool = True
-        highest_price = self._changing_week_data["Open"].max()
+        highest_price = self._changing_week_data["High"].max()
         # print("price + sd", current_price +
         #       (self._standard_deviation * self._changing_week_data["Close"].std()))
         # print("lowest price", lowest_price)
