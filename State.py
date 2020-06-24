@@ -13,35 +13,53 @@ class BacktestingState(object):
     a backtest
     """
 
-    def __init__(self, portfolio, strategy_list, current_date, resolution, allocation_hodl_dict=None):
+    def __init__(self, portfolio, strategy_list, current_date, resolution,
+                 allocation_hodl_dict_percent=None, allocation_hodl_dict_data=None):
+        if not allocation_hodl_dict_data is None:
+            assert not allocation_hodl_dict_percent is None
+        if not allocation_hodl_dict_percent is None:
+            assert not allocation_hodl_dict_data is None
         self._portfolio = portfolio
         self._strategy_list = strategy_list
-        self._portfolio_history = pd.DataFrame()
+        self._portfolio_history = pd.DataFrame(
+            columns=["Strategy Value", "HODL Value"])
+        self._history_length = 0
         current_time = str(Time(resolution))
         self._initial_datetime = current_date, current_time
         self._hodl_comparison_dict = dict()
-        self._allocation_dict = allocation_hodl_dict
+        self._allocation_dict = allocation_hodl_dict_percent
+        self._allocation_data = allocation_hodl_dict_data
         self.set_compare_function()
+
+    def get_portfolio_history(self):
+        """
+        Returns: the portfolio history
+        """
+        return self._portfolio_history
 
     def set_compare_function(self):
         """
         Sets a hodl strategy to compare against a stock strategy/
         """
         current_date, current_time = self._initial_datetime
-        for strategy in self._strategy_list:
-            name = strategy.get_asset_name()
-            if name in self._hodl_comparison_dict:
-                continue
-            price = strategy.get_stock_price(current_date, current_time)
-            self._hodl_comparison_dict[name] = self._portfolio.get_initial_value(
-            ) / price
-        len_holdings = len(self._hodl_comparison_dict)
-        for holding in self._hodl_comparison_dict:
-            if self._allocation_dict == None:
+        if self._allocation_dict == None:
+            for strategy in self._strategy_list:
+                name = strategy.get_asset_name()
+                if name in self._hodl_comparison_dict:
+                    continue
+                price = strategy.get_stock_price(current_date, current_time)
+                self._hodl_comparison_dict[name] = self._portfolio.get_initial_value(
+                ) / price
+            len_holdings = len(self._hodl_comparison_dict)
+            for holding in self._hodl_comparison_dict:
                 self._hodl_comparison_dict[holding] = self._hodl_comparison_dict[holding]/len_holdings
-            else:
-                self._hodl_comparison_dict[holding] = self._allocation_dict[holding] * \
-                    self._hodl_comparison_dict[holding]
+        else:
+            for key in self._allocation_data:
+                df = self._allocation_data[key]
+                price = StockStrategy.get_stock_price_static(
+                    df, current_date, current_time)
+                self._hodl_comparison_dict[key] = (self._allocation_dict[key] * self._portfolio.get_initial_value(
+                )) / price
 
     def get_strategy_list(self):
         """
@@ -55,33 +73,61 @@ class BacktestingState(object):
         """
         return self._portfolio
 
-    def get_portfolio_snapshot(self, date, time, HODL_percent=None):
+    def get_portfolio_snapshot(self, date, time):
         """
         Returns: a snapshot of the portfolio
         """
-        return self._portfolio.snapshot(date, time, HODL_percent)
+        initial_value = self._portfolio_history.iloc[0]['Strategy Value']
+        current_value = self._portfolio_history.iloc[-1]['Strategy Value']
+        buying_power = self._portfolio.get_buying_power()
+        holdings = self._portfolio.get_holdings()
+        percent_change = round(100 * ((self._portfolio_history.iloc[-1] /
+                                       self._portfolio_history.iloc[0]) - 1), 2)
 
-    def save_portfolio_value_to_df(self, cur_date, cur_time, asset_list):
+        return f"Snapshot:\nInitial Value: {initial_value}\nCurrent Value: {current_value}" + \
+            f"\nBuying Power: {buying_power}\nCurrent Holdings: {holdings}\n" + \
+            f"Percent Change from Start: {percent_change['Strategy Value']}%\n" + \
+            f"Percent Change for HODL: {percent_change['HODL Value']}%"
+
+    def save_portfolio_value_to_df(self, cur_date, cur_time):
         """
         Adds the portfolio value (and HODL value)
         """
-        # create dict:  {date: [value with strategy, value with HODL]}
-        pass
+        strat_value = self._portfolio.get_portfolio_value(cur_date, cur_time)
+        hodl_value = 0
+        for key in self._hodl_comparison_dict:
+            df = self._allocation_data[key]
+            price = StockStrategy.get_stock_price_static(
+                df, cur_date, cur_time) * self._hodl_comparison_dict[key]
+            hodl_value += price
+            # print("allocation", self._hodl_comparison_dict[key])
+            # print('price', price)
+
+        self._portfolio_history.loc[self._history_length] = [
+            strat_value, hodl_value]
+        self._history_length += 1
+        # print(self._portfolio_history)
 
     def add_initial_holdings(self, holding_list, date, resolution):
         """
         Adds the initial holdings to the protfolio in this state
         """
         # print('before', self._hodl_comparison_dict)
+        # print('price', price)
+        # print(self._hodl_comparison_dict['BTC'] * price)
         initial_value = self._portfolio.get_initial_value()
         self._portfolio.add_initial_holdings(holding_list, date, resolution)
         final_value = self._portfolio.get_initial_value()
         percent_change = 1 + ((final_value - initial_value) / initial_value)
         # print("p change", percent_change)
         for holding_tup in holding_list:
-            self._hodl_comparison_dict[holding_tup[0]
-                                       ] = self._hodl_comparison_dict[holding_tup[0]] * percent_change
+            if holding_tup[0] in self._hodl_comparison_dict:
+                self._hodl_comparison_dict[holding_tup[0]
+                                           ] = self._hodl_comparison_dict[holding_tup[0]] * percent_change
         # print('after', self._hodl_comparison_dict)
+
+    def calculate_HODL(self):
+        return 0
 
 
 class Holdings(object):
@@ -335,48 +381,17 @@ class Portfolio(object):
         self._conditions = []
         self._strategies = dict()
 
+    def get_holdings(self):
+        """
+        Returns: the current holdings in this portfolio
+        """
+        return self._current_holdings
+
     def get_initial_value(self):
         """
         Returns: the intiial portfolio value
         """
         return self._initial_value
-
-    def snapshot(self, date, time, HODL_percent=None):
-        """
-        Returns: a snapshot of the portfolio
-        """
-        value = self.get_portfolio_value(date, time)
-        percent_change = round(
-            100 * (value - self._initial_value) / self._initial_value, 2)
-        if HODL_percent == None:
-            return f"Snapshot:\nInitial Value: {self._initial_value}\nCurrent Value: {value}" + \
-                f"\nBuying Power: {self.get_buying_power()}\nCurrent Holdings: {self._current_holdings}\n" + \
-                f"Percent Change from Start: {percent_change}%"
-        else:
-            return f"Snapshot:\nInitial Value: {self._initial_value}\nCurrent Value: {value}" + \
-                f"\nBuying Power: {self.get_buying_power()}\nCurrent Holdings: {self._current_holdings}\n" + \
-                f"Percent Change from Start: {percent_change}%\nPercent Change for HODL strategy: {HODL_percent}%"
-
-    def calculate_HODL(self, asset_list, start_date, end_date, current_time):
-        """
-        Returns: the percent gain if the asset list was equally invested in HODL from the beginning.
-        """
-        tmp_dict = dict()
-        amount_per_asset = self._initial_value / len(asset_list)
-        for asset in asset_list:
-            df = self._strategies[asset]
-            asset_price = StockStrategy.get_stock_price_static(
-                df, start_date, current_time)
-            num_assets = amount_per_asset / asset_price
-            tmp_dict[asset] = num_assets
-        total = 0
-        for key in tmp_dict:
-            df = self._strategies[key]
-            asset_price = StockStrategy.get_stock_price_static(
-                df, end_date, current_time)
-            new_price = tmp_dict[key] * asset_price
-            total += new_price
-        return round(100 * (total - self._initial_value) / self._initial_value, 2)
 
     def get_buying_power(self):
         """
@@ -471,7 +486,7 @@ class Portfolio(object):
             else:
                 num_shares = int(holding_tup[1] // price)
             self.add_holdings(holding_tup[0], num_shares, holding_tup[2])
-            self._initial_value += (holding_tup[1] + self._fees)
+            self._initial_value += holding_tup[1]
             self.add_strategy_data_from_df(holding_tup[0], holding_tup[3])
             Helper.log_info(
                 f"Added ${holding_tup[1]} of {holding_tup[0]} shares to the initial portfolio.")

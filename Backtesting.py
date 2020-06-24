@@ -1,5 +1,6 @@
 from datetime import date, datetime, timedelta
 from pandas_datareader import data
+import matplotlib.pyplot as plt
 import re
 import pandas as pd
 import math
@@ -103,7 +104,7 @@ def backtest_loop_helper(asset_list, current_date, current_time, state):
 
 def backtest_loop(asset_list, state, resolution, date1_obj, day_delta, current_time, current_epoch):
     current_date = date1_obj + timedelta(days=day_delta)
-    state.save_portfolio_value_to_df(current_date, current_time, asset_list)
+    state.save_portfolio_value_to_df(current_date, current_time)
 
     if resolution == State.Resolution.Daily or resolution == State.Resolution.DAILY:
         try:
@@ -138,11 +139,12 @@ def backtest(asset_list, start_date, end_date, resolution, days, state, strategy
         backtest_loop(asset_list, state, resolution,
                       date1_obj, day_delta, current_time, current_epoch)
         current_epoch += 1
-    HODL = portfolio.calculate_HODL(asset_list, start_date,
-                                    date1_obj + timedelta(days=day_delta), current_time)
+    history = state.get_portfolio_history()
+    history.plot()
+    plt.show()
     Helper.log_info("Backtest complete")
     Helper.log_info(state.get_portfolio_snapshot(
-        date1_obj + timedelta(days=day_delta), current_time, HODL))
+        date1_obj + timedelta(days=day_delta), current_time))
 
 
 def insert_strategy_list_stocks(asset_list, portfolio):
@@ -195,8 +197,11 @@ def backtest_crypto(crypto_list=['ETH', 'BTC'], start_date='2019-12-10', end_dat
     strategy_list = insert_strategy_list_crypto(crypto_list, portfolio)
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
     date1_obj = date(date1[0], date1[1], date1[2])
+    # Fix HODL percent to be accurate
     state = State.BacktestingState(
-        portfolio, strategy_list, date1_obj, State.Resolution.Hourly, allocation_hodl_dict={'BTC': 0.8, 'ETH': 0.2})
+        portfolio, strategy_list, date1_obj, State.Resolution.Hourly, allocation_hodl_dict_percent={
+            'BTC': 1.0},
+        allocation_hodl_dict_data={'BTC': load_crypto_data('BTC')})
 
     initial_holdings = []
     resolution = State.Resolution.Hourly
