@@ -15,10 +15,12 @@ class BacktestingState(object):
 
     def __init__(self, portfolio, strategy_list, current_date, resolution,
                  allocation_hodl_dict_percent=None, allocation_hodl_dict_data=None):
-        if not allocation_hodl_dict_data is None:
-            assert not allocation_hodl_dict_percent is None
-        if not allocation_hodl_dict_percent is None:
-            assert not allocation_hodl_dict_data is None
+        if allocation_hodl_dict_data is not None:
+            for data in allocation_hodl_dict_data:
+                assert data in allocation_hodl_dict_percent
+        if allocation_hodl_dict_percent is not None:
+            for data in allocation_hodl_dict_percent:
+                assert data in allocation_hodl_dict_data
         self._portfolio = portfolio
         self._strategy_list = strategy_list
         self._portfolio_history = pd.DataFrame(
@@ -43,6 +45,7 @@ class BacktestingState(object):
         """
         current_date, current_time = self._initial_datetime
         if self._allocation_dict == None:
+            self._allocation_data = dict()
             for strategy in self._strategy_list:
                 name = strategy.get_asset_name()
                 if name in self._hodl_comparison_dict:
@@ -50,9 +53,12 @@ class BacktestingState(object):
                 price = strategy.get_stock_price(current_date, current_time)
                 self._hodl_comparison_dict[name] = self._portfolio.get_initial_value(
                 ) / price
+                df = strategy.get_dataframe()
+                self._allocation_data[name] = df
             len_holdings = len(self._hodl_comparison_dict)
             for holding in self._hodl_comparison_dict:
                 self._hodl_comparison_dict[holding] = self._hodl_comparison_dict[holding]/len_holdings
+
         else:
             for key in self._allocation_data:
                 df = self._allocation_data[key]
@@ -189,9 +195,10 @@ class StockStrategy(object):
     between deploying the strategy can it be deployed again
     """
 
-    def __init__(self, name, data, buying_allocation=0.05, buying_allocation_type='percent_portfolio', maximum_allocation=1.0,
+    def __init__(self, strategy_name, stock_name, data, buying_allocation=0.05, buying_allocation_type='percent_portfolio', maximum_allocation=1.0,
                  minimum_allocation=0.0, buying_delay=1, selling_allocation=0.1, assets='stocks', must_be_profitable_to_sell=False):
-        self._name = name
+        self._strategy_name = strategy_name
+        self._stock_name = stock_name
         self._buying_conditions = []
         self._selling_conditions = []
         self._buying_allocation_for_stock = buying_allocation
@@ -211,13 +218,13 @@ class StockStrategy(object):
         """
         The string representation of this strategy
         """
-        return f"{self._name} Stock Strategy"
+        return f"Strategy {self._strategy_name} for {self._stock_name}"
 
     def __repr__(self):
         """
         The repr representation of this strategy
         """
-        return f"{self._name} Stock Strategy"
+        return f"Strategy {self._strategy_name} for {self._stock_name}"
 
     def must_be_profitable(self):
         """
@@ -235,7 +242,7 @@ class StockStrategy(object):
         """
         Returns: the buying conditions for this stock strategy
         """
-        return self._name
+        return self._stock_name
 
     def get_buying_conditions(self):
         """
@@ -278,7 +285,12 @@ class StockStrategy(object):
         Returns: the current price of the stock at this date and time
         """
         if self._assets == 'stocks':
-            return round(self._data.loc[str(date)].loc[str(time)], 2)
+            i = 0
+            while i < 3:
+                try:
+                    return round(self._data.loc[str(date - timedelta(i))].loc[str(time)], 2)
+                except KeyError:
+                    i = i + 1
         else:
             return self._data.loc[f'{date} {time}'].loc['Open']
 
