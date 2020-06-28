@@ -29,6 +29,15 @@ class Condition(ABC):
         return self._data
 
 
+class RollingStopCondition(Condition):
+    """
+    A class representing a rolling stop loss selling condition
+    """
+
+    def is_true(self):
+        return False
+
+
 class TimePeriodCondition(Condition):
     """
     Condition parent class for conditions that has to deal with a stock's price
