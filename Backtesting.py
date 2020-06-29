@@ -224,7 +224,7 @@ def insert_strategy_list_options(asset_list, portfolio):
         df = load_stock_data(asset)
         # print(df)
         week_low = State.HoldingsStrategy(
-            "Buy Boomers at week lows", asset, df, buying_allocation=5, buying_delay=3,
+            "Buy Boomers at week lows", asset, df, buying_allocation=10, buying_delay=3,
             selling_allocation=0.0, buying_allocation_type='percent_portfolio', assets='options',)
         week_low.set_buying_conditions(
             [Conditions.IsLowForPeriod(df, portfolio, 0, week_length=7)])
@@ -233,7 +233,7 @@ def insert_strategy_list_options(asset_list, portfolio):
     return strategy_list
 
 
-def backtest_options(asset_list=["NVDA"], start_date='2019-11-01', end_date='2020-05-01'):
+def backtest_options(asset_list=["AAPL"], start_date='2019-12-15', end_date='2020-06-15'):
     portfolio = State.Portfolio()
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
     date1_obj = date(date1[0], date1[1], date1[2])

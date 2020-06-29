@@ -669,7 +669,7 @@ class Portfolio(object):
         # Get strike price 4 weeks out
         friday = datetime(current_date.year,
                           current_date.month, current_date.day)
-        friday = friday + timedelta(56)
+        friday = friday + timedelta(14)
         while friday.weekday() != 4:
             friday += timedelta(1)
         match = re.search(r"20(\d\d)-(\d\d)-(\d\d)", str(friday))
