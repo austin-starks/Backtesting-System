@@ -1,13 +1,22 @@
 import requests
 import os
+import pandas as pd
 
 api_key = os.environ['TRADIER_API_KEY']
 
 trade_data_response = requests.get('https://sandbox.tradier.com/v1/markets/history?',
-                                   params={'symbol': 'NVDA200710C00360000',
-                                           'start': '2020-06-01'},
+                                   params={'symbol': 'NVDA200327C00240000',
+                                           'start': '2020-01-27'},
                                    headers={'Authorization': api_key,
-                                            'Accept': 'application/json'}
-                                   )
+                                            'Accept': 'application/json'})
 trade_data_json = trade_data_response.json()
-print(trade_data_json['history']['day'][1])
+trade_data_arr = trade_data_json['history']['day']
+dates = []
+trade_data = []
+for element in trade_data_arr:
+    dates.append(element['date'])
+    trade_data.append([element['open'], element['high'],
+                       element['low'], element['close'], element['volume']])
+df = pd.DataFrame(trade_data, index=dates,
+                  columns=["Open", "High", "Low", "Close", "Volume"])
+print(df.head())

@@ -75,7 +75,7 @@ def backtest_buy(stock_name, stock_strategy, current_date, current_time, portfol
         buy_success = portfolio.buy(
             stock_name, stock_strategy, current_date, current_time)
         if buy_success:
-            stock_strategy.ackowledge_buy(current_date, current_time)
+            stock_strategy.acknowledge_buy(current_date, current_time)
 
 
 def backtest_sell(stock_name, stock_strategy, current_date, current_time, portfolio, stock_data):
@@ -87,7 +87,7 @@ def backtest_sell(stock_name, stock_strategy, current_date, current_time, portfo
         sell_success = portfolio.sell(
             stock_name, stock_strategy, current_date, current_time)
         if sell_success:
-            stock_strategy.ackowledge_sell(current_date, current_time)
+            stock_strategy.acknowledge_sell(current_date, current_time)
 
 
 def backtest_loop_helper(asset_list, current_date, current_time, state):
@@ -104,14 +104,12 @@ def backtest_loop_helper(asset_list, current_date, current_time, state):
 
 def backtest_loop(asset_list, state, resolution, date1_obj, day_delta, current_time, current_epoch):
     current_date = date1_obj + timedelta(days=day_delta)
-    state.save_portfolio_value_to_df(current_date, current_time)
+    state.update_portfolio_value(current_date, current_time)
 
     if resolution == State.Resolution.Daily or resolution == State.Resolution.DAILY:
-        try:
-            backtest_loop_helper(
-                asset_list, current_date, current_time, state)
-        except KeyError:
-            pass
+        backtest_loop_helper(
+            asset_list, current_date, current_time, state)
+
     elif resolution == State.Resolution.Hourly or resolution == State.Resolution.HOURLY:
         backtest_loop_helper(
             asset_list, current_date, current_time, state)
@@ -150,7 +148,7 @@ def insert_strategy_list_crypto(crypto_list, portfolio):
     strategy_list = []
     for crypto in crypto_list:
         df = load_crypto_data(crypto)
-        stock_strategy = State.StockStrategy(
+        stock_strategy = State.HoldingsStrategy(
             "Buy", crypto, df, buying_allocation=0.05, selling_allocation=0.05, minimum_allocation=0.4,
             buying_allocation_type='percent_bp', must_be_profitable_to_sell=True, assets='crypto',
             buying_delay=2)
@@ -191,23 +189,23 @@ def insert_strategy_list_stocks(asset_list, portfolio):
     strategy_list = []
     for stock in asset_list:
         df = load_stock_data(stock)
-        week_low = State.StockStrategy(
-            "Buy Boomers at week lows", stock, df, buying_allocation=0.05,
+        week_low = State.HoldingsStrategy(
+            "Buy Boomers at week lows", stock, df, buying_allocation=0.05, buying_delay=3,
             selling_allocation=0.0, buying_allocation_type='percent_bp')
         week_low.set_buying_conditions(
             [Conditions.IsLowForPeriod(df, portfolio, 0, week_length=7)])
         strategy_list.append(week_low)
 
-        month_low = State.StockStrategy(
-            "Buy Boomers at month lows", stock, df, buying_allocation=0.25,
-            selling_allocation=0.0, buying_allocation_type='percent_bp')
-        month_low.set_buying_conditions(
-            [Conditions.IsLowForPeriod(df, portfolio, 0, week_length=30)])
-        strategy_list.append(month_low)
+        # month_low = State.HoldingsStrategy(
+        #     "Buy Boomers at month lows", stock, df, buying_allocation=0.25,
+        #     selling_allocation=0.0, buying_allocation_type='percent_bp')
+        # month_low.set_buying_conditions(
+        #     [Conditions.IsLowForPeriod(df, portfolio, 0, week_length=30)])
+        # strategy_list.append(month_low)
     return strategy_list
 
 
-def backtest_stocks(asset_list=["NVDA", "DOCU", "SHOP"], start_date='2020-01-01', end_date='2020-06-01'):
+def backtest_stocks(asset_list=["NVDA", "AAPL"], start_date='2019-08-01', end_date='2020-01-01'):
     portfolio = State.Portfolio()
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
     date1_obj = date(date1[0], date1[1], date1[2])
@@ -220,12 +218,42 @@ def backtest_stocks(asset_list=["NVDA", "DOCU", "SHOP"], start_date='2020-01-01'
              resolution, 'all', state, strategy_list)
 
 
+def insert_strategy_list_options(asset_list, portfolio):
+    strategy_list = []
+    for asset in asset_list:
+        df = load_stock_data(asset)
+        # print(df)
+        week_low = State.HoldingsStrategy(
+            "Buy Boomers at week lows", asset, df, buying_allocation=5, buying_delay=3,
+            selling_allocation=0.0, buying_allocation_type='percent_portfolio', assets='options',)
+        week_low.set_buying_conditions(
+            [Conditions.IsLowForPeriod(df, portfolio, 0, week_length=7)])
+        strategy_list.append(week_low)
+
+    return strategy_list
+
+
+def backtest_options(asset_list=["NVDA"], start_date='2019-11-01', end_date='2020-05-01'):
+    portfolio = State.Portfolio()
+    date1 = [int(x) for x in re.split(r'[\-]', start_date)]
+    date1_obj = date(date1[0], date1[1], date1[2])
+    strategy_list = insert_strategy_list_options(asset_list, portfolio)
+    state = State.BacktestingState(
+        portfolio, strategy_list, date1_obj, State.Resolution.Daily,
+        allocation_hodl_dict_percent={'QQQ': 1.0}, allocation_hodl_dict_data={'QQQ': load_stock_data('QQQ')})
+
+    resolution = State.Resolution.Daily
+    backtest(asset_list, start_date, end_date,
+             resolution, 'all', state, strategy_list)
+
+
 if __name__ == "__main__":
-    clear_logs()
+    # clear_logs()
     logging.basicConfig(
         filename=f'logs/{datetime.now().strftime("%m-%d-%Y %H:%M:%S")}.log',
         format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
         datefmt='%Y-%m-%d:%H:%M:%S',
         level=logging.INFO)
-    backtest_stocks()
+    # backtest_stocks()
     # backtest_crypto()
+    backtest_options()

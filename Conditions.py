@@ -145,6 +145,7 @@ class IsLowForPeriod(TimePeriodCondition):
             #       (self._standard_deviation * self._changing_week_data["Close"].std()))
             # print("lowest price", lowest_price)
             if current_price < lowest_price + (self._standard_deviation * self._changing_week_data["Close"].std()):
+                # print(current_price, lowest_price)
                 abool = True
             if current_time.is_eod():
                 self.add_datapoint(today)
@@ -187,6 +188,8 @@ class IsLowForPeriod(TimePeriodCondition):
             return self.is_true_stocks(current_date, current_time)
         elif assets == 'crypto':
             return self.is_true_crypto(current_date, current_time)
+        elif assets == "options":
+            return self.is_true_stocks(current_date, current_time)
 
 
 class IsHighForPeriod(TimePeriodCondition):
@@ -251,3 +254,5 @@ class IsHighForPeriod(TimePeriodCondition):
             return self.is_true_stocks(current_date, current_time)
         elif assets == 'crypto':
             return self.is_true_crypto(current_date, current_time)
+        elif assets == "options":
+            return self.is_true_stocks(current_date, current_time)
