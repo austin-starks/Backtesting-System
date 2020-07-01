@@ -128,7 +128,7 @@ class BacktestingState(object):
                             if condition.has_holdings_to_sell():
                                 holdings_to_sell = condition.get_holdings_to_sell()
                                 if holding in holdings_to_sell:
-                                    condition.clear_holdings_to_sell()
+                                    condition.delete_holding(holding)
                     self._portfolio.liquidate(
                         holding, expiration_obj.date())
 
@@ -225,6 +225,18 @@ class Holdings(object):
         """
         self._num_assets += num_assets
 
+    def update_price(self, num_assets, price):
+        """
+        Updates the initial price to be the average of the old price and the new price
+
+        This function is called AFTER add_shares
+        """
+        original_assets = self._num_assets - num_assets
+        original_price = original_assets * self._initial_price
+        new_price = (original_price + (price * num_assets)) / \
+            (self._num_assets)
+        self._initial_price = new_price
+
     def subtract_shares(self, num_assets):
         """
         Adds additional shares to holdings
@@ -242,7 +254,7 @@ class HoldingsStrategy(object):
     """
 
     def __init__(self, strategy_name, stock_name, data, buying_allocation=0.05, buying_allocation_type='percent_portfolio', maximum_allocation=1.0,
-                 minimum_allocation=0.0, buying_delay=1, selling_allocation=0.1, assets='stocks', must_be_profitable_to_sell=False, strikes_above=0):
+                 minimum_allocation=0.0, buying_delay=1, selling_delay=0, selling_allocation=0.1, assets='stocks', must_be_profitable_to_sell=False, strikes_above=0):
         self._strategy_name = strategy_name
         self._stock_name = stock_name
         self._buying_conditions = []
@@ -253,7 +265,8 @@ class HoldingsStrategy(object):
         self._minimum_allocation_for_stock = minimum_allocation
         self._selling_allocation_for_stock = selling_allocation
         self._data = data
-        self._delay = buying_delay
+        self._buying_delay = buying_delay
+        self._selling_delay = selling_delay
         self._last_purchase = None
         self._last_price = None
         self._last_sale = None
@@ -355,7 +368,7 @@ class HoldingsStrategy(object):
         self._last_price = self.get_stock_price(date, time)
         for condition in self._buying_conditions:
             abool = abool and condition.is_true(date, time, self._assets)
-        return abool and (self._last_purchase is None or self._last_purchase[0] + timedelta(self._delay) <= date)
+        return abool and (self._last_purchase is None or self._last_purchase[0] + timedelta(self._buying_delay) <= date)
 
     def selling_conditions_are_met(self, date, time, is_profitable=True):
         """
@@ -368,7 +381,7 @@ class HoldingsStrategy(object):
                     date, time, self._assets)
             else:
                 abool = abool and condition.is_true(date, time, self._assets)
-        return abool and (self._last_sale is None or self._last_sale[0] + timedelta(self._delay) <= date)
+        return abool and (self._last_sale is None or self._last_sale[0] + timedelta(self._selling_delay) <= date)
 
     def get_buying_allocation(self):
         """
@@ -458,18 +471,17 @@ class Portfolio(object):
         abool = False
         holding_name = holding.get_name()
         df = self._strategies[holding_name]
-        i = 0
         last_price = HoldingsStrategy.get_stock_price_static(
-            df, expiration_date + timedelta(i), "Close")
-
+            df, expiration_date, "Close")
         num_contracts = holding.get_num_assets()
         total_price = 100 * num_contracts * last_price
-
         abool = True
+        if last_price == 0.01:
+            total_price = 0
         self.increase_buying_power(total_price)
         self.subtract_holdings(holding_name, num_contracts, "options")
         Helper.log_info(
-            f"\n{num_contracts} {holding_name} contracts expired on {expiration_date} for ${last_price} per share.\n---")
+            f"\n{abs(num_contracts)} {holding_name} contracts expired on {expiration_date} for ${last_price} per share.\n---")
         return abool
 
     def get_holdings(self):
@@ -561,6 +573,7 @@ class Portfolio(object):
             ind = self._current_holdings.index(new_holding)
             holding = self._current_holdings[ind]
             holding.add_shares(num_shares)
+            holding.update_price(num_shares, price)
             if holding.get_num_assets() == 0:
                 del self._current_holdings[ind]
         else:
@@ -741,7 +754,7 @@ class Portfolio(object):
                 abool = True
                 self.decrease_buying_power(total_price)
                 self.add_holdings(symbol, num_contracts,
-                                  total_price, 'options')
+                                  holdings_price, 'options')
                 self.add_strategy_data_from_df(symbol, df)
                 if total_price > 0:
                     Helper.log_info(
@@ -782,7 +795,7 @@ class Portfolio(object):
         elif total_price < buying_power and total_price != 0.0:
             abool = True
             self.decrease_buying_power(total_price)
-            self.add_holdings(stock, num_shares, total_price, asset_type)
+            self.add_holdings(stock, num_shares, last_price, asset_type)
             self.add_strategy_data(stock_strategy)
             Helper.log_info(
                 f"\nBought {num_shares} {stock} shares on {date} at {time} for ${last_price} per share.\n{stock_strategy}\n---")
@@ -798,10 +811,15 @@ class Portfolio(object):
         abool = False
         last_price = stock_strategy.get_stock_price(cur_date, cur_time)
         selling_conditions = stock_strategy.get_selling_conditions()
-        holdings_to_sell = []
+        holdings_to_sell = set()
+        # MAKE AN INTERSECTION OF ALL THE HOLDINGS TO SELL
         for condition in selling_conditions:
             if condition.has_holdings_to_sell():
-                holdings_to_sell += condition.get_holdings_to_sell()
+                if len(holdings_to_sell) == 0:
+                    holdings_to_sell = condition.get_holdings_to_sell()
+                else:
+                    holdings_to_sell = holdings_to_sell.intersection(
+                        condition.get_holdings_to_sell())
                 condition.clear_holdings_to_sell()
         for holding in holdings_to_sell:
             # Get price of the holding
@@ -811,8 +829,8 @@ class Portfolio(object):
             selling_allocation = stock_strategy.get_selling_allocation()
             # If holding is less than 0, make sure the price you're gaining is negative
             # (i.e., make sure you're losing money)
-            initial_price = holding.get_initial_price()
-            if initial_price < 0:
+            num_assets = holding.get_num_assets()
+            if num_assets < 0:
                 selling_allocation = selling_allocation * -1
             abool = True
             # change inner variables to be correct.
@@ -824,12 +842,11 @@ class Portfolio(object):
             asset_type = holding.get_type()
             self.subtract_holdings(stock_name, selling_allocation, asset_type)
             if total_price > 0:
-                # Fix
                 Helper.log_info(
-                    f"\nSold (to close) {selling_allocation} {stock} ({last_price}) contract(s) on {cur_date} at {cur_time} for ${holdings_price} per contract.\n{stock_strategy}\n---")
+                    f"\nSold (to close) {selling_allocation} {stock_name} ({last_price}) contract(s) on {cur_date} at {cur_time} for ${holdings_price} per contract.\n{stock_strategy}\n---")
             else:
                 Helper.log_info(
-                    f"\nBought (to close) {-1 * selling_allocation} {stock} ({last_price}) contract(s) on {cur_date} at {cur_time} for ${holdings_price} per contract.\n{stock_strategy}\n---")
+                    f"\nBought (to close) {-1 * selling_allocation} {stock_name} ({last_price}) contract(s) on {cur_date} at {cur_time} for ${holdings_price} per contract.\n{stock_strategy}\n---")
             return abool
 
     def sell(self, stock, stock_strategy, date, time):

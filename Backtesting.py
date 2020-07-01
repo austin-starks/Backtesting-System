@@ -235,7 +235,7 @@ def insert_strategy_list_options(asset_list, portfolio):
             "Sell Nega-Boomers when up n%", asset, df, buying_allocation=-3, buying_delay=7,
             selling_allocation=3, buying_allocation_type='percent_portfolio', assets='options', strikes_above=1)
         nega_week_low.set_selling_conditions(
-            [Conditions.IsUpNPercent(df, portfolio, n=0.5),
+            [Conditions.IsDownNPercent(df, portfolio, n=0.5),
              Conditions.IsSoldToOpen(df, portfolio)
              ])
         strategy_list.append(nega_week_low)

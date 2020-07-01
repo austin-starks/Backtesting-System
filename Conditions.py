@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import pandas as pd
 from datetime import date, timedelta
 import re
+import Helper
 import State
 
 
@@ -15,6 +16,7 @@ class Condition(ABC):
     def __init__(self, data, portfolio):
         self._data = data
         self._portfolio = portfolio
+        self._holdings_to_sell = set()
 
     @abstractmethod
     def is_true(self):
@@ -37,12 +39,30 @@ class Condition(ABC):
 
     def has_holdings_to_sell(self):
         """
-        Returns: True if the condition has a list of holdings to sell. False otherwise 
+        Returns: True if the condition has a list of holdings to sell. False otherwise
         """
         return False
 
+    def delete_holding(self, holding):
+        """
+        Removes the holding from holdings to sell
+        """
+        self._holdings_to_sell.remove(holding)
 
-class IsUpNPercent(Condition):
+    def get_holdings_to_sell(self):
+        """
+        Returns: the holdings to sell
+        """
+        return self._holdings_to_sell
+
+    def clear_holdings_to_sell(self):
+        """
+        Removes all holdings from holdings to sell
+        """
+        self._holdings_to_sell = set()
+
+
+class IsDownNPercent(Condition):
     """
     A class representing if a holding is down n percent.
     """
@@ -50,14 +70,7 @@ class IsUpNPercent(Condition):
     def __init__(self, data, portfolio, n=0.5):
         super().__init__(data, portfolio)
         self._current_price = None
-        self._n = 0.5
-        self._holdings_to_sell = set()
-
-    def get_holdings_to_sell(self):
-        return self._holdings_to_sell
-
-    def clear_holdings_to_sell(self):
-        self._holdings_to_sell = set()
+        self._n = n
 
     def has_holdings_to_sell(self):
         return True
@@ -75,16 +88,22 @@ class IsUpNPercent(Condition):
                 dataframe = strategies[holding.get_name()]
                 # print(dataframe.head())
                 today = State.HoldingsStrategy.get_stock_price_static(
-                    dataframe, current_date, current_time) * 100
+                    dataframe, current_date, current_time)
                 # print("today", today)
                 initial_price = holding.get_initial_price()
                 if initial_price < 0:
                     initial_price = initial_price * -1
-                # print("initial_price", initial_price)
-                # print('fraction', abs((today - initial_price) / initial_price))
-                # print('n', self._n)
-                if abs((today - initial_price) / initial_price) > self._n:
+
+                if abs(today / initial_price) < self._n:
                     abool = True
+                    # Helper.log_warn("initial_price", initial_price)
+                    # Helper.log_warn("today", today)
+                    # Helper.log_warn('fraction', abs(
+                    #     (today / initial_price)))
+                    # Helper.log_warn('n', self._n)
+                    # Helper.log_warn("SELLLLLLL")
+                    # print("SELLLLLLL")
+                    # print("SELLLLLLL")
                     self._holdings_to_sell.add(holding)
             except Exception as e:
                 # print(dataframe)
@@ -101,17 +120,19 @@ class IsSoldToOpen(Condition):
 
     def __init__(self, data, portfolio, n=0.5):
         super().__init__(data, portfolio)
-        self._sold_to_open = set()
+
+    def has_holdings_to_sell(self):
+        return True
 
     def is_true(self, current_date, current_time, *args):
         abool = False
         portfolio = self.get_portfolio()
         holdings = portfolio.get_holdings()
         for holding in holdings:
-            initial_price = holding.get_initial_price()
-            if initial_price < 0:
+            num_holdings = holding.get_num_assets()
+            if num_holdings < 0:
                 abool = True
-                self._sold_to_open.add(holding)
+                self._holdings_to_sell.add(holding)
         return abool
 
 
