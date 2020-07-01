@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import pandas as pd
 from datetime import date, timedelta
 import re
+import State
 
 
 class Condition(ABC):
@@ -28,14 +29,90 @@ class Condition(ABC):
         """
         return self._data
 
+    def get_portfolio(self):
+        """
+        Returns: The portfolio for this condition
+        """
+        return self._portfolio
 
-class RollingStopCondition(Condition):
-    """
-    A class representing a rolling stop loss selling condition
-    """
-
-    def is_true(self):
+    def has_holdings_to_sell(self):
+        """
+        Returns: True if the condition has a list of holdings to sell. False otherwise 
+        """
         return False
+
+
+class IsUpNPercent(Condition):
+    """
+    A class representing if a holding is down n percent.
+    """
+
+    def __init__(self, data, portfolio, n=0.5):
+        super().__init__(data, portfolio)
+        self._current_price = None
+        self._n = 0.5
+        self._holdings_to_sell = set()
+
+    def get_holdings_to_sell(self):
+        return self._holdings_to_sell
+
+    def clear_holdings_to_sell(self):
+        self._holdings_to_sell = set()
+
+    def has_holdings_to_sell(self):
+        return True
+
+    def is_true(self, current_date, current_time, *args):
+        # print('is true')
+        abool = False
+        portfolio = self.get_portfolio()
+        holdings = portfolio.get_holdings()
+        strategies = portfolio.get_strategies()
+        for holding in holdings:
+            try:
+                # print(strategies)
+                # print(holding)
+                dataframe = strategies[holding.get_name()]
+                # print(dataframe.head())
+                today = State.HoldingsStrategy.get_stock_price_static(
+                    dataframe, current_date, current_time) * 100
+                # print("today", today)
+                initial_price = holding.get_initial_price()
+                if initial_price < 0:
+                    initial_price = initial_price * -1
+                # print("initial_price", initial_price)
+                # print('fraction', abs((today - initial_price) / initial_price))
+                # print('n', self._n)
+                if abs((today - initial_price) / initial_price) > self._n:
+                    abool = True
+                    self._holdings_to_sell.add(holding)
+            except Exception as e:
+                # print(dataframe)
+                # print(today)
+                print(e)
+                pass
+        return abool
+
+
+class IsSoldToOpen(Condition):
+    """
+    A class representing if a holding is down n percent.
+    """
+
+    def __init__(self, data, portfolio, n=0.5):
+        super().__init__(data, portfolio)
+        self._sold_to_open = set()
+
+    def is_true(self, current_date, current_time, *args):
+        abool = False
+        portfolio = self.get_portfolio()
+        holdings = portfolio.get_holdings()
+        for holding in holdings:
+            initial_price = holding.get_initial_price()
+            if initial_price < 0:
+                abool = True
+                self._sold_to_open.add(holding)
+        return abool
 
 
 class TimePeriodCondition(Condition):

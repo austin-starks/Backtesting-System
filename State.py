@@ -98,7 +98,7 @@ class BacktestingState(object):
             f"Percent Change from Start: {percent_change['Strategy Value']}%\n" + \
             f"Percent Change for HODL: {percent_change['HODL Value']}%"
 
-    def update_portfolio_value(self, cur_date, cur_time):
+    def update_portfolio_value(self, cur_date, cur_time, strategies):
         """
         Adds the portfolio value (and HODL value)
         """
@@ -109,27 +109,26 @@ class BacktestingState(object):
             price = HoldingsStrategy.get_stock_price_static(
                 df, cur_date, cur_time) * self._hodl_comparison_dict[key]
             hodl_value += price
-            # print("allocation", self._hodl_comparison_dict[key])
-            # print('price', price)
 
         self._portfolio_history.loc[self._history_length] = [
             strat_value, hodl_value]
         self._history_length += 1
-        # print(self._portfolio_history)
         # update holdings
-        # print("here")
         for holding in self._portfolio.get_holdings():
-            # print('here2', holding.get_type())
             if holding.get_type() == 'options':
                 expiration = holding.get_expiration()
-                # print(expiration)
                 expiration_match = re.match(
                     r"(\d{4})-(\d{2})-(\d{2})", expiration)
                 expiration_obj = datetime(int(expiration_match.group(1)),
                                           int(expiration_match.group(2)), int(expiration_match.group(3)))
-                # print(expiration.date() < date)
-                # print(cur_date, expiration_obj.date())
                 if cur_date > expiration_obj.date():
+                    for strategy in strategies:
+                        selling_conditions = strategy.get_selling_conditions()
+                        for condition in selling_conditions:
+                            if condition.has_holdings_to_sell():
+                                holdings_to_sell = condition.get_holdings_to_sell()
+                                if holding in holdings_to_sell:
+                                    condition.clear_holdings_to_sell()
                     self._portfolio.liquidate(
                         holding, expiration_obj.date())
 
@@ -137,19 +136,14 @@ class BacktestingState(object):
         """
         Adds the initial holdings to the protfolio in this state
         """
-        # print('before', self._hodl_comparison_dict)
-        # print('price', price)
-        # print(self._hodl_comparison_dict['BTC'] * price)
         initial_value = self._portfolio.get_initial_value()
         self._portfolio.add_initial_holdings(holding_list, date, resolution)
         final_value = self._portfolio.get_initial_value()
         percent_change = 1 + ((final_value - initial_value) / initial_value)
-        # print("p change", percent_change)
         for holding_tup in holding_list:
             if holding_tup[0] in self._hodl_comparison_dict:
                 self._hodl_comparison_dict[holding_tup[0]
                                            ] = self._hodl_comparison_dict[holding_tup[0]] * percent_change
-        # print('after', self._hodl_comparison_dict)
 
     def calculate_HODL(self):
         return 0
@@ -163,7 +157,7 @@ class Holdings(object):
     of asset, and how much the person owns
     """
 
-    def __init__(self, stock, num_assets, type_asset="stock"):
+    def __init__(self, stock, num_assets, initial_price, type_asset="stock"):
         self._asset_name = stock
         self._num_assets = num_assets
         self._type = type_asset
@@ -172,12 +166,13 @@ class Holdings(object):
             self._expiration = f"20{match.group(1)}-{match.group(2)}-{match.group(3)}"
         else:
             self._expiration = None
+        self._initial_price = initial_price
 
     def __hash__(self):
-        return hash(self._asset_name + self._type)
+        return hash(self._asset_name)
 
     def __eq__(self, other):
-        return self._asset_name == other._asset_name and self._type == other._type
+        return self._asset_name == other._asset_name
 
     def __str__(self):
         return "(" + self._asset_name + " | Num assets: " + str(self._num_assets) + ")"
@@ -190,6 +185,21 @@ class Holdings(object):
         Returns: the name of the holdings
         """
         return self._asset_name
+
+    def get_underlying_name(self):
+        """
+        Returns: the underlying name of the holdings
+        """
+        if Helper.hasNumbers(self._asset_name):
+            return re.search(r"\D+", self._asset_name).group(0)
+        else:
+            return self._asset_name
+
+    def get_initial_price(self):
+        """
+        Returns: the initial price of the holdings
+        """
+        return self._initial_price
 
     def get_expiration(self):
         """
@@ -232,7 +242,7 @@ class HoldingsStrategy(object):
     """
 
     def __init__(self, strategy_name, stock_name, data, buying_allocation=0.05, buying_allocation_type='percent_portfolio', maximum_allocation=1.0,
-                 minimum_allocation=0.0, buying_delay=1, selling_allocation=0.1, assets='stocks', must_be_profitable_to_sell=False):
+                 minimum_allocation=0.0, buying_delay=1, selling_allocation=0.1, assets='stocks', must_be_profitable_to_sell=False, strikes_above=0):
         self._strategy_name = strategy_name
         self._stock_name = stock_name
         self._buying_conditions = []
@@ -249,6 +259,7 @@ class HoldingsStrategy(object):
         self._last_sale = None
         self._assets = assets
         self._must_be_profitable = must_be_profitable_to_sell
+        self._strikes_above = strikes_above
 
     def __str__(self):
         """
@@ -291,6 +302,12 @@ class HoldingsStrategy(object):
         Returns: the selling conditions for this stock strategy
         """
         return self._selling_conditions
+
+    def get_strikes_above(self):
+        """
+        Returns: the stock strategy's strikes above if this strategy is an option
+        """
+        return self._strikes_above
 
     def set_buying_conditions(self, condition_list):
         """
@@ -347,8 +364,8 @@ class HoldingsStrategy(object):
         abool = False if self._selling_conditions == [] else True
         for condition in self._selling_conditions:
             if self._must_be_profitable:
-                abool = abool and condition.is_true(
-                    date, time, self._assets) and is_profitable
+                abool = abool and is_profitable and condition.is_true(
+                    date, time, self._assets)
             else:
                 abool = abool and condition.is_true(date, time, self._assets)
         return abool and (self._last_sale is None or self._last_sale[0] + timedelta(self._delay) <= date)
@@ -394,22 +411,17 @@ class HoldingsStrategy(object):
         """
         Returns: the current price of the stock at this date and time
         """
-        # print("df")
-        # print(df)
         if not 'Symbol' in df:
             i = 0
             while True:
                 delta = timedelta(days=i)
                 try:
-                    # print(str(date + delta))
                     return round(df.loc[str(date + delta)].loc[str(time)], 2)
                 except KeyError:
-                    # print(df.iloc[-1].name)
                     expiration_match = re.match(
                         r"(\d{4})-(\d{2})-(\d{2})", df.iloc[-1].name)
                     expiration = datetime(int(expiration_match.group(1)),
                                           int(expiration_match.group(2)), int(expiration_match.group(3)))
-                    # print(expiration.date() < date)
                     if expiration.date() < date:
                         return round(df.loc[str(expiration.date())].loc[str(time)], 2)
                     i -= 1
@@ -446,11 +458,10 @@ class Portfolio(object):
         abool = False
         holding_name = holding.get_name()
         df = self._strategies[holding_name]
-        # print(df)
-        # print(expiration_date)
+        i = 0
+        last_price = HoldingsStrategy.get_stock_price_static(
+            df, expiration_date + timedelta(i), "Close")
 
-        last_price = df.loc[str(expiration_date)].loc["Close"]
-        # print(last_price)
         num_contracts = holding.get_num_assets()
         total_price = 100 * num_contracts * last_price
 
@@ -458,7 +469,7 @@ class Portfolio(object):
         self.increase_buying_power(total_price)
         self.subtract_holdings(holding_name, num_contracts, "options")
         Helper.log_info(
-            f"{num_contracts} {holding_name} contracts expired on {expiration_date} for ${last_price} per share.")
+            f"\n{num_contracts} {holding_name} contracts expired on {expiration_date} for ${last_price} per share.\n---")
         return abool
 
     def get_holdings(self):
@@ -473,6 +484,12 @@ class Portfolio(object):
         """
         return self._initial_value
 
+    def get_strategies(self):
+        """
+        Returns: the dataframes for the strategies in this portfolio
+        """
+        return self._strategies
+
     def get_buying_power(self):
         """
         Returns: the current buying power of the portfolio
@@ -486,17 +503,12 @@ class Portfolio(object):
         holdings_value = 0.0
         for holding in self._current_holdings:
             holdings_name = holding.get_name()
-            # print(holdings_name[0])
             holdings_df = self._strategies[holdings_name]
-            # print(holdings_df.head())
-            # print("strategies", self._strategies)
             holdings_price = HoldingsStrategy.get_stock_price_static(
                 holdings_df, date, time)
             if holding.get_type() == 'options':
                 holdings_price = holdings_price * 100
             holdings_value += holding.get_num_assets() * holdings_price
-        # print(date, time, holdings_value)
-        # print(self._current_holdings)
         return self.get_buying_power() + holdings_value
 
     def is_profitable(self, date, time):
@@ -510,7 +522,7 @@ class Portfolio(object):
         Returns: True if this portfolio contains stock. False otherwise.
         """
         for holding in self._current_holdings:
-            if holding.get_name() == asset:
+            if holding.get_underlying_name() == asset:
                 return True
         return False
 
@@ -540,15 +552,17 @@ class Portfolio(object):
         else:
             return 0.0
 
-    def add_holdings(self, stock, num_shares, asset_type):
+    def add_holdings(self, stock, num_shares, price, asset_type):
         """
         Adds the holdings to the portfolio
         """
-        new_holding = Holdings(stock, num_shares, asset_type)
+        new_holding = Holdings(stock, num_shares, price, asset_type)
         if new_holding in self._current_holdings:
             ind = self._current_holdings.index(new_holding)
             holding = self._current_holdings[ind]
             holding.add_shares(num_shares)
+            if holding.get_num_assets() == 0:
+                del self._current_holdings[ind]
         else:
             self._current_holdings.append(new_holding)
 
@@ -571,7 +585,8 @@ class Portfolio(object):
                 num_shares = holding_tup[1] / price
             else:
                 num_shares = int(holding_tup[1] // price)
-            self.add_holdings(holding_tup[0], num_shares, holding_tup[2])
+            self.add_holdings(
+                holding_tup[0], num_shares, price, holding_tup[2])
             self._initial_value += holding_tup[1]
             self.add_strategy_data_from_df(holding_tup[0], holding_tup[3])
             Helper.log_info(
@@ -581,7 +596,7 @@ class Portfolio(object):
         """
         Subtract the holdings to the portfolio
         """
-        new_holding = Holdings(stock, num_shares, asset_type)
+        new_holding = Holdings(stock, num_shares, 0, asset_type)
         if new_holding in self._current_holdings:
             ind = self._current_holdings.index(new_holding)
             holding = self._current_holdings[ind]
@@ -669,7 +684,7 @@ class Portfolio(object):
         # Get strike price 4 weeks out
         friday = datetime(current_date.year,
                           current_date.month, current_date.day)
-        friday = friday + timedelta(14)
+        friday = friday + timedelta(15)
         while friday.weekday() != 4:
             friday += timedelta(1)
         match = re.search(r"20(\d\d)-(\d\d)-(\d\d)", str(friday))
@@ -680,18 +695,13 @@ class Portfolio(object):
         symbol = f"{stock}{match.group(1)}{match.group(2)}{match.group(3)}{option_type}{str_price}"
         api_key = os.environ['TRADIER_API_KEY']
         try:
-            # print('try', current_date)
             trade_data_response = requests.get('https://sandbox.tradier.com/v1/markets/history?',
                                                params={'symbol':  symbol,
                                                        'start': str(current_date)},
                                                headers={'Authorization': api_key,
                                                         'Accept': 'application/json'})
             trade_data_json = trade_data_response.json()
-            # print('symbol', symbol)
-            # print('json', trade_data_json)
             trade_data_arr = trade_data_json['history']['day']
-            # print("current date", current_date)
-            # print(trade_data_arr[0])
             dates = []
             trade_data = []
             for element in trade_data_arr:
@@ -700,7 +710,6 @@ class Portfolio(object):
                                    element['low'], element['close'], element['volume']])
             df = pd.DataFrame(trade_data, index=dates,
                               columns=["Open", "High", "Low", "Close", "Volume"])
-            # print(df.head())
             return df, symbol
         except:
             return None, ""
@@ -709,51 +718,40 @@ class Portfolio(object):
         """
         Helper function for buy to purchase options as opposed to shares.
         """
-        # print("inside buy_options")
         abool = False
         last_price = stock_strategy.get_stock_price(cur_date, cur_time)
-        # print(last_price)
-        df, symbol = self.get_options_data(stock, last_price, cur_date)
+        df, symbol = self.get_options_data(
+            stock, last_price, cur_date, stock_strategy.get_strikes_above())
         if df is None:
-            # print("df is None")
             return abool
         else:
-            # print('df.head')
-            # print(df.head())
             pass
         num_contracts = stock_strategy.get_buying_allocation()
-        # print('num contracts', num_contracts)
-        # print(df)
-        # print(df.loc[str(cur_date)][str(cur_time)])
-        # print('before total')
-        # print(df)
-        # print(cur_date)
-
-        # print(df.loc[str(cur_date)])
         try:
-            total_price = 100*num_contracts * \
-                df.loc[str(cur_date)][str(cur_time)]
-            # print('after_total')
-            # print('total_price', total_price)
+            holdings_price = HoldingsStrategy.get_stock_price_static(
+                df, cur_date, cur_time)
+            total_price = 100*num_contracts * holdings_price
             buying_power = self.get_buying_power()
             max_allocation = stock_strategy.get_maximum_allocation()
-            # print('before if-statement')
             if self.get_current_allocation(stock, last_price, cur_date, cur_time) + total_price > \
                     max_allocation * self.get_portfolio_value(cur_date, cur_time):
                 Helper.log_warn(
                     f"Portfolio currently has maximum allocation of {stock}")
             elif total_price < buying_power and total_price != 0.0:
-                # print('total price', total_price)
                 abool = True
                 self.decrease_buying_power(total_price)
-                self.add_holdings(symbol, num_contracts, 'options')
+                self.add_holdings(symbol, num_contracts,
+                                  total_price, 'options')
                 self.add_strategy_data_from_df(symbol, df)
-                Helper.log_info(
-                    f"\nBought {num_contracts} {symbol} ({last_price}) contract(s) on {cur_date} at {cur_time} for ${df.loc[str(cur_date)][str(cur_time)]} per contract.\n{stock_strategy}\n---")
+                if total_price > 0:
+                    Helper.log_info(
+                        f"\nBought (to open) {num_contracts} {symbol} ({last_price}) contract(s) on {cur_date} at {cur_time} for ${holdings_price} per contract.\n{stock_strategy}\n---")
+                else:
+                    Helper.log_info(
+                        f"\nSold (to open) {-1 * num_contracts} {symbol} ({last_price}) contract(s) on {cur_date} at {cur_time} for ${holdings_price} per contract.\n{stock_strategy}\n---")
             else:
                 Helper.log_warn(
                     f"\nInsufficent buying power to buy {stock}\n{stock_strategy}\n---")
-            # print('after if-statement')
         except KeyError:
             pass
         finally:
@@ -769,11 +767,8 @@ class Portfolio(object):
         """
         abool = False
         asset_type = stock_strategy.get_asset_type()
-        # print("inside buy", "asset_type", asset_type)
         if asset_type == 'options':
-            answer = self.buy_options(stock, stock_strategy, date, time)
-            # print("buy_options", answer)
-            return answer
+            return self.buy_options(stock, stock_strategy, date, time)
         buying_allocation = stock_strategy.get_buying_allocation()
         max_allocation = stock_strategy.get_maximum_allocation()
         last_price = stock_strategy.get_stock_price(date, time)
@@ -787,7 +782,7 @@ class Portfolio(object):
         elif total_price < buying_power and total_price != 0.0:
             abool = True
             self.decrease_buying_power(total_price)
-            self.add_holdings(stock, num_shares, asset_type)
+            self.add_holdings(stock, num_shares, total_price, asset_type)
             self.add_strategy_data(stock_strategy)
             Helper.log_info(
                 f"\nBought {num_shares} {stock} shares on {date} at {time} for ${last_price} per share.\n{stock_strategy}\n---")
@@ -796,12 +791,55 @@ class Portfolio(object):
                 f"\nInsufficent buying power to buy {stock}\n{stock_strategy}\n---")
         return abool
 
+    def sell_options(self, stock, stock_strategy, cur_date, cur_time):
+        """
+        Helper function for buy to purchase options as opposed to shares.
+        """
+        abool = False
+        last_price = stock_strategy.get_stock_price(cur_date, cur_time)
+        selling_conditions = stock_strategy.get_selling_conditions()
+        holdings_to_sell = []
+        for condition in selling_conditions:
+            if condition.has_holdings_to_sell():
+                holdings_to_sell += condition.get_holdings_to_sell()
+                condition.clear_holdings_to_sell()
+        for holding in holdings_to_sell:
+            # Get price of the holding
+            stock_name = holding.get_name()
+            df = self._strategies[stock_name]
+            # Get selling allocation
+            selling_allocation = stock_strategy.get_selling_allocation()
+            # If holding is less than 0, make sure the price you're gaining is negative
+            # (i.e., make sure you're losing money)
+            initial_price = holding.get_initial_price()
+            if initial_price < 0:
+                selling_allocation = selling_allocation * -1
+            abool = True
+            # change inner variables to be correct.
+            holdings_price = HoldingsStrategy.get_stock_price_static(
+                df, cur_date, cur_time)
+            total_price = selling_allocation * holdings_price
+            self.increase_buying_power(total_price)
+            # Make sure subtract holdings logic is right
+            asset_type = holding.get_type()
+            self.subtract_holdings(stock_name, selling_allocation, asset_type)
+            if total_price > 0:
+                # Fix
+                Helper.log_info(
+                    f"\nSold (to close) {selling_allocation} {stock} ({last_price}) contract(s) on {cur_date} at {cur_time} for ${holdings_price} per contract.\n{stock_strategy}\n---")
+            else:
+                Helper.log_info(
+                    f"\nBought (to close) {-1 * selling_allocation} {stock} ({last_price}) contract(s) on {cur_date} at {cur_time} for ${holdings_price} per contract.\n{stock_strategy}\n---")
+            return abool
+
     def sell(self, stock, stock_strategy, date, time):
         """
         Sells stock according to the stock_strategy
         """
-        abool = False
         asset_type = stock_strategy.get_asset_type()
+        abool = False
+        if asset_type == 'options':
+            return self.sell_options(stock, stock_strategy, date, time)
         last_price = stock_strategy.get_stock_price(date, time)
         current_value_holdings = self.get_current_allocation(
             stock, last_price, date, time)

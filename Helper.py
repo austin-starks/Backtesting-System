@@ -1,6 +1,14 @@
 import sys
 import logging
 import traceback
+import re
+
+
+def hasNumbers(inputString):
+    """
+    Returns: True if the input string has a number, False otherwise
+    """
+    return bool(re.search(r'\d', inputString))
 
 
 def log_error(msg):
