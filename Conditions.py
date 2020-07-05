@@ -88,7 +88,7 @@ class IsDownNPercent(Condition):
                 dataframe = strategies[holding.get_name()]
                 # print(dataframe.head())
                 today = State.HoldingsStrategy.get_stock_price_static(
-                    dataframe, current_date, current_time)
+                    dataframe, current_date, current_time, holding.get_name())
                 # print("today", today)
                 initial_price = holding.get_initial_price()
                 if initial_price < 0:

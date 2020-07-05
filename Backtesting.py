@@ -187,9 +187,9 @@ def insert_strategy_list_stocks(asset_list, portfolio):
             "Buy Boomers at week lows", stock, df, buying_allocation=0.05, buying_delay=3,
             selling_allocation=0.0, buying_allocation_type='percent_bp')
         week_low.set_buying_conditions(
-            [Conditions.IsLowForPeriod(df, portfolio, 0, week_length=7)])
+            [Conditions.IsLowForPeriod(df, portfolio, 3, week_length=7)])
         week_low.set_selling_conditions(
-            [Conditions.IsUpNPercent(df, portfolio, n=0.6)])
+            [Conditions.IsHighForPeriod(df, portfolio, 0, week_length=7)])
         strategy_list.append(week_low)
 
         # month_low = State.HoldingsStrategy(
@@ -201,7 +201,7 @@ def insert_strategy_list_stocks(asset_list, portfolio):
     return strategy_list
 
 
-def backtest_stocks(asset_list=["NVDA", "AAPL"], start_date='2019-08-01', end_date='2020-01-01'):
+def backtest_stocks(asset_list=["NVDA"], start_date='2019-01-15', end_date='2019-06-15'):
     portfolio = State.Portfolio()
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
     date1_obj = date(date1[0], date1[1], date1[2])
@@ -219,21 +219,21 @@ def insert_strategy_list_options(asset_list, portfolio):
     for asset in asset_list:
         df = load_stock_data(asset)
         week_low = State.HoldingsStrategy(
-            "Buy Boomers at week lows", asset, df, buying_allocation=3, buying_delay=7,
+            "Buy Boomers at week lows", asset, df, buying_allocation=1, buying_delay=7,
             selling_allocation=0.0, buying_allocation_type='percent_portfolio', assets='options',)
         week_low.set_buying_conditions(
-            [Conditions.IsLowForPeriod(df, portfolio, 0, week_length=7)])
+            [Conditions.IsLowForPeriod(df, portfolio, 3, week_length=7)])
         strategy_list.append(week_low)
         nega_week_low = State.HoldingsStrategy(
-            "Buy Nega-Boomers at week lows", asset, df, buying_allocation=-3, buying_delay=7,
+            "Buy Nega-Boomers at week lows", asset, df, buying_allocation=-1, buying_delay=7,
             selling_allocation=3, buying_allocation_type='percent_portfolio', assets='options', strikes_above=1)
         nega_week_low.set_buying_conditions(
-            [Conditions.IsLowForPeriod(df, portfolio, 0, week_length=7)])
+            [Conditions.IsLowForPeriod(df, portfolio, 3, week_length=7)])
         strategy_list.append(nega_week_low)
 
         nega_week_low = State.HoldingsStrategy(
-            "Sell Nega-Boomers when up n%", asset, df, buying_allocation=-3, buying_delay=7,
-            selling_allocation=3, buying_allocation_type='percent_portfolio', assets='options', strikes_above=1)
+            "Sell Nega-Boomers when up n%", asset, df, buying_allocation=-1, buying_delay=7,
+            selling_allocation=1, buying_allocation_type='percent_portfolio', assets='options', strikes_above=1)
         nega_week_low.set_selling_conditions(
             [Conditions.IsDownNPercent(df, portfolio, n=0.5),
              Conditions.IsSoldToOpen(df, portfolio)
@@ -243,14 +243,15 @@ def insert_strategy_list_options(asset_list, portfolio):
     return strategy_list
 
 
-def backtest_options(asset_list=["AAPL"], start_date='2018-12-15', end_date='2019-06-15'):
+def backtest_options(asset_list=["NVDA", "AAPL", "FB", "GOOG", "NFLX", "AMD", "SE"], start_date='2019-06-15', end_date='2020-06-15'):
     portfolio = State.Portfolio(initial_cash=10000, trading_fees=2.00)
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
     date1_obj = date(date1[0], date1[1], date1[2])
     strategy_list = insert_strategy_list_options(asset_list, portfolio)
     state = State.BacktestingState(
         portfolio, strategy_list, date1_obj, State.Resolution.Daily,
-        allocation_hodl_dict_percent={'QQQ': 1.0}, allocation_hodl_dict_data={'QQQ': load_stock_data('QQQ')})
+        # allocation_hodl_dict_percent={'QQQ': 1.0}, allocation_hodl_dict_data={'QQQ': load_stock_data('QQQ')}
+    )
     resolution = State.Resolution.Daily
     backtest(asset_list, start_date, end_date,
              resolution, 'all', state, strategy_list)
