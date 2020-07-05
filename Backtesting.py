@@ -70,15 +70,15 @@ def check_backtest_preconditions(start_date, end_date, resolution, days):
     Helper.log_info("Preconditions checked")
 
 
-def backtest_buy(stock_name, stock_strategy, current_date, current_time, portfolio, stock_data):
+def backtest_buy(stock_name, stock_strategy, current_date, current_time, portfolio, stock_data, state):
     if stock_strategy.buying_conditions_are_met(current_date, current_time):
         buy_success = portfolio.buy(
             stock_name, stock_strategy, current_date, current_time)
         if buy_success:
-            stock_strategy.acknowledge_buy(current_date, current_time)
+            state.acknowledge_buy(stock_strategy, current_date, current_time)
 
 
-def backtest_sell(stock_name, stock_strategy, current_date, current_time, portfolio, stock_data):
+def backtest_sell(stock_name, stock_strategy, current_date, current_time, portfolio, stock_data, state):
     if stock_strategy.must_be_profitable():
         is_profitable = portfolio.is_profitable(current_date, current_time)
     else:
@@ -87,7 +87,7 @@ def backtest_sell(stock_name, stock_strategy, current_date, current_time, portfo
         sell_success = portfolio.sell(
             stock_name, stock_strategy, current_date, current_time)
         if sell_success:
-            stock_strategy.acknowledge_sell(current_date, current_time)
+            state.acknowledge_sell(stock_strategy, current_date, current_time)
 
 
 def backtest_loop_helper(asset_list, current_date, current_time, state):
@@ -97,9 +97,9 @@ def backtest_loop_helper(asset_list, current_date, current_time, state):
         dataframe = stock_strategy.get_dataframe()
         stock_name = stock_strategy.get_asset_name()
         backtest_buy(stock_name, stock_strategy, current_date,
-                     current_time, portfolio, dataframe)
+                     current_time, portfolio, dataframe, state)
         backtest_sell(stock_name, stock_strategy, current_date,
-                      current_time, portfolio, dataframe)
+                      current_time, portfolio, dataframe, state)
 
 
 def backtest_loop(asset_list, state, resolution, date1_obj, day_delta, current_time, current_epoch):
@@ -112,7 +112,7 @@ def backtest_loop(asset_list, state, resolution, date1_obj, day_delta, current_t
     current_time.forward_time(resolution)
 
 
-def backtest(asset_list, start_date, end_date, resolution, days, state, strategy_list):
+def backtest(asset_list, start_date, end_date, resolution, days, state, strategy_list, plot_buy_sell_points=True):
     Helper.log_info("Starting Backtest")
     check_backtest_preconditions(start_date, end_date, resolution, days)
     if days == 'All' or days == 'all':
@@ -130,8 +130,17 @@ def backtest(asset_list, start_date, end_date, resolution, days, state, strategy
         backtest_loop(asset_list, state, resolution,
                       date1_obj, day_delta, current_time, current_epoch)
         current_epoch += 1
-    history = state.get_portfolio_history()
-    history.plot()
+    portfolio_history, buy_history, sell_history = state.get_portfolio_history()
+    if plot_buy_sell_points:
+        ax = portfolio_history.plot()
+        for buy in buy_history:
+            x = (buy-date1_obj).days * resolution
+            plt.axvline(x=x, color='red', linestyle='dashed')
+            ax.text(x=x, y=13000, s='b')
+        for sell in sell_history:
+            x = (sell-date1_obj).days * resolution
+            plt.axvline(x=x, color='blue', linestyle='dashed')
+            ax.text(x=x, y=13000, s='s')
     plt.show()
     Helper.log_info("Backtest complete")
     Helper.log_info(state.get_portfolio_snapshot(
@@ -243,7 +252,7 @@ def insert_strategy_list_options(asset_list, portfolio):
     return strategy_list
 
 
-def backtest_options(asset_list=["NVDA", "AAPL", "FB", "GOOG", "NFLX", "AMD", "SE"], start_date='2019-06-15', end_date='2020-06-15'):
+def backtest_options(asset_list=["SHOP"], start_date='2020-05-01', end_date='2020-07-01'):
     portfolio = State.Portfolio(initial_cash=10000, trading_fees=2.00)
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
     date1_obj = date(date1[0], date1[1], date1[2])

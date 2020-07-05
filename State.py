@@ -36,12 +36,28 @@ class BacktestingState(object):
         self._allocation_dict = allocation_hodl_dict_percent
         self._allocation_data = allocation_hodl_dict_data
         self.set_compare_function()
+        self._buy_history = []
+        self._sell_history = []
+
+    def acknowledge_buy(self, stock_strategy, cur_date, cur_time):
+        """
+        Acknowledges that a purchase was made
+        """
+        stock_strategy.acknowledge_buy(cur_date, cur_time)
+        self._buy_history.append(cur_date)
+
+    def acknowledge_sell(self, stock_strategy, cur_date, cur_time):
+        """
+        Acknowledges that a purchase was made
+        """
+        stock_strategy.acknowledge_sell(cur_date, cur_time)
+        self._sell_history.append(cur_date)
 
     def get_portfolio_history(self):
         """
         Returns: the portfolio history
         """
-        return self._portfolio_history
+        return self._portfolio_history, self._buy_history, self._sell_history
 
     def set_compare_function(self):
         """
@@ -434,7 +450,7 @@ class HoldingsStrategy(object):
                     return round(df.loc[str(current_date + delta)].loc[str(time)], 2)
                 except KeyError:
                     expiration_match = re.match(
-                        r"(\d{4})-(\d{2})-(\d{2})", df.iloc[-1].name)
+                        r"(\d{4})-(\d{2})-(\d{2})", str(df.iloc[-1].name))
                     expiration = datetime(int(expiration_match.group(1)),
                                           int(expiration_match.group(2)), int(expiration_match.group(3)))
                     # print(df.tail())
