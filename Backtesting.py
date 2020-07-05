@@ -102,14 +102,18 @@ def backtest_loop_helper(asset_list, current_date, current_time, state):
                       current_time, portfolio, dataframe, state)
 
 
-def backtest_loop(asset_list, state, resolution, date1_obj, day_delta, current_time, current_epoch):
-    current_date = date1_obj + timedelta(days=day_delta)
-    state.update_portfolio_value(
-        current_date, current_time, state.get_strategy_list())
-    backtest_loop_helper(
-        asset_list, current_date, current_time, state)
+def backtest_loop(asset_list, state, resolution, date1_obj, epochs, current_time, current_epoch):
+    while current_epoch <= epochs:
+        day_delta = current_epoch // resolution
+        current_date = date1_obj + timedelta(days=day_delta)
+        state.update_portfolio_value(
+            current_date, current_time, state.get_strategy_list())
+        backtest_loop_helper(
+            asset_list, current_date, current_time, state)
 
-    current_time.forward_time(resolution)
+        current_time.forward_time(resolution)
+        current_epoch += 1
+    return day_delta
 
 
 def backtest(asset_list, start_date, end_date, resolution, days, state, strategy_list, plot_buy_sell_points=False):
@@ -125,26 +129,38 @@ def backtest(asset_list, start_date, end_date, resolution, days, state, strategy
         epochs = days
     epochs, current_epoch = epochs * resolution, 0
     current_time = State.Time(resolution)
-    while current_epoch <= epochs:
-        day_delta = current_epoch // resolution
-        backtest_loop(asset_list, state, resolution,
-                      date1_obj, day_delta, current_time, current_epoch)
-        current_epoch += 1
+    days_passed = backtest_loop(asset_list, state, resolution,
+                                date1_obj, epochs, current_time, current_epoch)
+
     portfolio_history, buy_history, sell_history = state.get_portfolio_history()
     ax = portfolio_history.plot()
     if plot_buy_sell_points:
+        int_i = 0
         for buy in buy_history:
-            x = (buy-date1_obj).days * resolution
+            x = (buy[0]-date1_obj).days * resolution
+            y = 0.9 * state.get_portfolio().get_portfolio_value(
+                date1_obj + timedelta(days=days_passed), current_time) - 500*int_i
+            y = 0.9**int_i*y
             plt.axvline(x=x, color='red', linestyle='dashed')
-            ax.text(x=x, y=13000, s='b')
+            ax.text(x=x, y=y, s=f'b {buy[1]}')
+            int_i += 1
+            if int_i >= 4:
+                int_i = 0
+        int_i = 0
         for sell in sell_history:
-            x = (sell-date1_obj).days * resolution
+            x = (sell[0]-date1_obj).days * resolution
+            y = 0.9 * state.get_portfolio().get_portfolio_value(
+                date1_obj + timedelta(days=days_passed), current_time) - 500*int_i
+            y = 0.9**int_i*y
             plt.axvline(x=x, color='blue', linestyle='dashed')
-            ax.text(x=x, y=13000, s='s')
+            ax.text(x=x, y=y, s=f's {sell[1]}')
+            int_i += 1
+            if int_i >= 4:
+                int_i = 0
     plt.show()
     Helper.log_info("Backtest complete")
     Helper.log_info(state.get_portfolio_snapshot(
-        date1_obj + timedelta(days=day_delta), current_time))
+        date1_obj + timedelta(days=days_passed), current_time))
 
 
 def insert_strategy_list_crypto(crypto_list, portfolio):
@@ -254,7 +270,7 @@ def insert_strategy_list_options(asset_list, portfolio):
     return strategy_list
 
 
-def backtest_options(asset_list, start_date, end_date, include_buy_sells=False):
+def backtest_options(asset_list, start_date, end_date, include_buy_sells=True):
     portfolio = State.Portfolio(initial_cash=6000, trading_fees=2.00)
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
     date1_obj = date(date1[0], date1[1], date1[2])
@@ -277,6 +293,6 @@ if __name__ == "__main__":
         level=logging.INFO)
     # backtest_stocks()
     # backtest_crypto()
-    backtest_options(asset_list=["SE", "NVDA", "AAPL", "AMZN"],
+    backtest_options(asset_list=["DOCU", "SE", "SPOT"],
                      start_date='2020-06-01', end_date='2020-07-01', include_buy_sells=True)
     # backtest_options(asset_list=["NVDA", "SE", "DOCU", "AAPL", "SHOP", "TSLA"], start_date='2020-06-01', end_date='2020-07-01'):

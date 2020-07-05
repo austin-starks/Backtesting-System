@@ -362,14 +362,13 @@ class HasMoreBuyToOpen(Condition):
     """
 
     def __init__(self, data, portfolio, asset):
-            super().__init__(data, portfolio)
-            self._asset = asset
+        super().__init__(data, portfolio)
+        self._asset = asset
 
     def has_holdings_to_sell(self):
         return True
 
     def is_true(self, current_date, current_time, *args):
-        abool = False
         portfolio = self.get_portfolio()
         holdings = portfolio.get_holdings()
         posa_ends = 0

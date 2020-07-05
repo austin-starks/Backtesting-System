@@ -44,14 +44,16 @@ class BacktestingState(object):
         Acknowledges that a purchase was made
         """
         stock_strategy.acknowledge_buy(cur_date, cur_time)
-        self._buy_history.append(cur_date)
+        if stock_strategy.get_buying_allocation() > 0:
+            self._buy_history.append(
+                (cur_date, stock_strategy.get_asset_name()))
 
     def acknowledge_sell(self, stock_strategy, cur_date, cur_time):
         """
         Acknowledges that a purchase was made
         """
         stock_strategy.acknowledge_sell(cur_date, cur_time)
-        self._sell_history.append(cur_date)
+        self._sell_history.append((cur_date, stock_strategy.get_asset_name()))
 
     def get_portfolio_history(self):
         """
