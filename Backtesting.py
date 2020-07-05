@@ -112,7 +112,7 @@ def backtest_loop(asset_list, state, resolution, date1_obj, day_delta, current_t
     current_time.forward_time(resolution)
 
 
-def backtest(asset_list, start_date, end_date, resolution, days, state, strategy_list, plot_buy_sell_points=True):
+def backtest(asset_list, start_date, end_date, resolution, days, state, strategy_list, plot_buy_sell_points=False):
     Helper.log_info("Starting Backtest")
     check_backtest_preconditions(start_date, end_date, resolution, days)
     if days == 'All' or days == 'all':
@@ -131,8 +131,8 @@ def backtest(asset_list, start_date, end_date, resolution, days, state, strategy
                       date1_obj, day_delta, current_time, current_epoch)
         current_epoch += 1
     portfolio_history, buy_history, sell_history = state.get_portfolio_history()
+    ax = portfolio_history.plot()
     if plot_buy_sell_points:
-        ax = portfolio_history.plot()
         for buy in buy_history:
             x = (buy-date1_obj).days * resolution
             plt.axvline(x=x, color='red', linestyle='dashed')
@@ -229,31 +229,33 @@ def insert_strategy_list_options(asset_list, portfolio):
         df = load_stock_data(asset)
         week_low = State.HoldingsStrategy(
             "Buy Boomers at week lows", asset, df, buying_allocation=1, buying_delay=7,
-            selling_allocation=0.0, buying_allocation_type='percent_portfolio', assets='options',)
+            selling_allocation=1, buying_allocation_type='percent_portfolio', assets='options',)
         week_low.set_buying_conditions(
             [Conditions.IsLowForPeriod(df, portfolio, 3, week_length=7)])
         strategy_list.append(week_low)
         nega_week_low = State.HoldingsStrategy(
             "Buy Nega-Boomers at week lows", asset, df, buying_allocation=-1, buying_delay=7,
-            selling_allocation=3, buying_allocation_type='percent_portfolio', assets='options', strikes_above=1)
+            selling_allocation=1, buying_allocation_type='percent_portfolio', assets='options', strikes_above=1)
         nega_week_low.set_buying_conditions(
-            [Conditions.IsLowForPeriod(df, portfolio, 3, week_length=7)])
+            [Conditions.IsLowForPeriod(df, portfolio, 3, week_length=7),
+             Conditions.HasMoreBuyToOpen(df, portfolio, asset),
+             ])
         strategy_list.append(nega_week_low)
 
         nega_week_low = State.HoldingsStrategy(
-            "Sell Nega-Boomers when up n%", asset, df, buying_allocation=-1, buying_delay=7,
+            "Sell Nega-Boomers when up n%", asset, df, buying_allocation=-1, buying_delay=7, selling_delay=4,
             selling_allocation=1, buying_allocation_type='percent_portfolio', assets='options', strikes_above=1)
         nega_week_low.set_selling_conditions(
             [Conditions.IsDownNPercent(df, portfolio, n=0.5),
-             Conditions.IsSoldToOpen(df, portfolio)
+             Conditions.IsSoldToOpen(df, portfolio),
              ])
         strategy_list.append(nega_week_low)
 
     return strategy_list
 
 
-def backtest_options(asset_list=["SHOP"], start_date='2020-05-01', end_date='2020-07-01'):
-    portfolio = State.Portfolio(initial_cash=10000, trading_fees=2.00)
+def backtest_options(asset_list, start_date, end_date, include_buy_sells=False):
+    portfolio = State.Portfolio(initial_cash=6000, trading_fees=2.00)
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
     date1_obj = date(date1[0], date1[1], date1[2])
     strategy_list = insert_strategy_list_options(asset_list, portfolio)
@@ -263,7 +265,7 @@ def backtest_options(asset_list=["SHOP"], start_date='2020-05-01', end_date='202
     )
     resolution = State.Resolution.Daily
     backtest(asset_list, start_date, end_date,
-             resolution, 'all', state, strategy_list)
+             resolution, 'all', state, strategy_list, include_buy_sells)
 
 
 if __name__ == "__main__":
@@ -275,4 +277,6 @@ if __name__ == "__main__":
         level=logging.INFO)
     # backtest_stocks()
     # backtest_crypto()
-    backtest_options()
+    backtest_options(asset_list=["SE", "NVDA", "AAPL", "AMZN"],
+                     start_date='2020-06-01', end_date='2020-07-01', include_buy_sells=True)
+    # backtest_options(asset_list=["NVDA", "SE", "DOCU", "AAPL", "SHOP", "TSLA"], start_date='2020-06-01', end_date='2020-07-01'):

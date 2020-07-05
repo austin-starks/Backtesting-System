@@ -672,7 +672,7 @@ class Portfolio(object):
                 del self._current_holdings[ind]
         else:
             Helper.log_error(
-                "Selling shares you don't own. Exiting program...")
+                f"Selling shares you don't own: {stock}. Exiting program...")
 
     def decrease_buying_power(self, cost):
         """
@@ -830,6 +830,7 @@ class Portfolio(object):
                     Helper.log_info(
                         f"\nSold (to open) {-1 * num_contracts} {symbol} (${last_price} stock price) contract(s) on {cur_date} at {cur_time} for ${holdings_price} per contract.\n{stock_strategy}\n---")
             else:
+                abool = False
                 Helper.log_warn(
                     f"\nInsufficent buying power to buy {stock}\n{stock_strategy}\n---")
         except KeyError:
@@ -871,24 +872,32 @@ class Portfolio(object):
                 f"\nInsufficent buying power to buy {stock}\n{stock_strategy}\n---")
         return abool
 
-    def sell_options(self, stock, stock_strategy, cur_date, cur_time):
+    def sell_option(self, stock, stock_strategy, cur_date, cur_time):
         """
         Helper function for buy to purchase options as opposed to shares.
         """
         abool = False
         last_price = stock_strategy.get_stock_price(cur_date, cur_time)
         selling_conditions = stock_strategy.get_selling_conditions()
-        holdings_to_sell = set()
+        all_holdings_to_sell = set()
         # MAKE AN INTERSECTION OF ALL THE HOLDINGS TO SELL
         for condition in selling_conditions:
             if condition.has_holdings_to_sell():
-                if len(holdings_to_sell) == 0:
-                    holdings_to_sell = condition.get_holdings_to_sell()
+                if len(all_holdings_to_sell) == 0:
+                    all_holdings_to_sell = condition.get_holdings_to_sell()
                 else:
-                    holdings_to_sell = holdings_to_sell.intersection(
+                    all_holdings_to_sell = all_holdings_to_sell.intersection(
                         condition.get_holdings_to_sell())
                 condition.clear_holdings_to_sell()
-        for holding in holdings_to_sell:
+        current_stock_holdings_to_sell = set()
+        for holding in all_holdings_to_sell:
+            if holding.get_underlying_name() == stock:
+                current_stock_holdings_to_sell.add(holding)
+        # holdings_to_sell = holdings_to_sell.intersection(Holdings())
+        # print('stock we are selling', stock_strategy.get_asset_name())
+        # print('holdings to sell', current_stock_holdings_to_sell)
+        # print('current holdings', self._current_holdings)
+        for holding in current_stock_holdings_to_sell:
             # Get price of the holding
             stock_name = holding.get_name()
             df = self._strategies[stock_name]
@@ -923,7 +932,7 @@ class Portfolio(object):
         asset_type = stock_strategy.get_asset_type()
         abool = False
         if asset_type == 'options':
-            return self.sell_options(stock, stock_strategy, date, time)
+            return self.sell_option(stock, stock_strategy, date, time)
         last_price = stock_strategy.get_stock_price(date, time)
         current_value_holdings = self.get_current_allocation(
             stock, last_price, date, time)

@@ -115,7 +115,7 @@ class IsDownNPercent(Condition):
 
 class IsSoldToOpen(Condition):
     """
-    A class representing if a holding is down n percent.
+    A class representing if a holding is sold to open
     """
 
     def __init__(self, data, portfolio, n=0.5):
@@ -354,3 +354,32 @@ class IsHighForPeriod(TimePeriodCondition):
             return self.is_true_crypto(current_date, current_time)
         elif assets == "options":
             return self.is_true_stocks(current_date, current_time)
+
+
+class HasMoreBuyToOpen(Condition):
+    """
+    Condition: If the portfolio has more buy to open then it has sell to open of this stock.
+    """
+
+    def __init__(self, data, portfolio, asset):
+            super().__init__(data, portfolio)
+            self._asset = asset
+
+    def has_holdings_to_sell(self):
+        return True
+
+    def is_true(self, current_date, current_time, *args):
+        abool = False
+        portfolio = self.get_portfolio()
+        holdings = portfolio.get_holdings()
+        posa_ends = 0
+        nega_ends = 0
+        for holding in holdings:
+            num_holdings = holding.get_num_assets()
+            holding_name = holding.get_underlying_name()
+            if holding_name == self._asset:
+                if num_holdings < 0:
+                    nega_ends += 1
+                else:
+                    posa_ends += 1
+        return posa_ends > nega_ends
