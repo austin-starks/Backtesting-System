@@ -176,7 +176,7 @@ class Holdings(object):
     of asset, and how much the person owns
     """
 
-    def __init__(self, stock, num_assets, initial_price, type_asset="stock"):
+    def __init__(self, stock, num_assets, initial_price, type_asset="stock", initial_purchase_date=None):
         self._asset_name = stock
         self._num_assets = num_assets
         self._type = type_asset
@@ -186,6 +186,7 @@ class Holdings(object):
         else:
             self._expiration = None
         self._initial_price = initial_price
+        self._initial_purchase_date = initial_purchase_date
 
     def __hash__(self):
         return hash(self._asset_name)
@@ -194,10 +195,10 @@ class Holdings(object):
         return self._asset_name == other._asset_name
 
     def __str__(self):
-        return "(" + self._asset_name + " | Num assets: " + str(self._num_assets) + ")"
+        return f"({self._asset_name} + | Num assets: {str(self._num_assets)} | Initial Purchase: {str(self._initial_purchase_date)})"
 
     def __repr__(self):
-        return "(" + self._asset_name + " | Num assets: " + str(self._num_assets) + ")"
+        return self.__str__()
 
     def get_name(self):
         """
@@ -620,11 +621,12 @@ class Portfolio(object):
         else:
             return 0.0
 
-    def add_holdings(self, stock, num_shares, price, asset_type):
+    def add_holdings(self, stock, num_shares, price, asset_type, initial_purchase_date):
         """
         Adds the holdings to the portfolio
         """
-        new_holding = Holdings(stock, num_shares, price, asset_type)
+        new_holding = Holdings(stock, num_shares, price,
+                               asset_type, initial_purchase_date)
         if new_holding in self._current_holdings:
             ind = self._current_holdings.index(new_holding)
             holding = self._current_holdings[ind]
@@ -655,7 +657,7 @@ class Portfolio(object):
             else:
                 num_shares = int(holding_tup[1] // price)
             self.add_holdings(
-                holding_tup[0], num_shares, price, holding_tup[2])
+                holding_tup[0], num_shares, price, holding_tup[2], date)
             self._initial_value += holding_tup[1]
             self.add_strategy_data_from_df(holding_tup[0], holding_tup[3])
             Helper.log_info(
@@ -823,7 +825,7 @@ class Portfolio(object):
                 abool = True
                 self.decrease_buying_power(total_price)
                 self.add_holdings(symbol, num_contracts,
-                                  holdings_price, 'options')
+                                  holdings_price, 'options', cur_date)
                 self.add_strategy_data_from_df(symbol, df)
                 if total_price > 0:
                     Helper.log_info(
@@ -865,7 +867,7 @@ class Portfolio(object):
         elif total_price < buying_power and total_price != 0.0:
             abool = True
             self.decrease_buying_power(total_price)
-            self.add_holdings(stock, num_shares, last_price, asset_type)
+            self.add_holdings(stock, num_shares, last_price, asset_type, date)
             self.add_strategy_data(stock_strategy)
             Helper.log_info(
                 f"\nBought {num_shares} {stock} shares on {date} at {time} for ${last_price} per share.\n{stock_strategy}\n---")

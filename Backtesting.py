@@ -244,14 +244,14 @@ def insert_strategy_list_options(asset_list, portfolio):
     for asset in asset_list:
         df = load_stock_data(asset)
         week_low = State.HoldingsStrategy(
-            "Buy Boomers at week lows", asset, df, buying_allocation=1, buying_delay=7,
+            "Buy Boomers at week lows", asset, df, buying_allocation=3, buying_delay=7,
             selling_allocation=1, buying_allocation_type='percent_portfolio', assets='options',)
         week_low.set_buying_conditions(
             [Conditions.IsLowForPeriod(df, portfolio, 3, week_length=7)])
         strategy_list.append(week_low)
         nega_week_low = State.HoldingsStrategy(
-            "Buy Nega-Boomers at week lows", asset, df, buying_allocation=-1, buying_delay=7,
-            selling_allocation=1, buying_allocation_type='percent_portfolio', assets='options', strikes_above=1)
+            "Buy Nega-Boomers at week lows", asset, df, buying_allocation=-3, buying_delay=7,
+            selling_allocation=3, buying_allocation_type='percent_portfolio', assets='options', strikes_above=1)
         nega_week_low.set_buying_conditions(
             [Conditions.IsLowForPeriod(df, portfolio, 3, week_length=7),
              Conditions.HasMoreBuyToOpen(df, portfolio, asset),
@@ -259,8 +259,8 @@ def insert_strategy_list_options(asset_list, portfolio):
         strategy_list.append(nega_week_low)
 
         nega_week_low = State.HoldingsStrategy(
-            "Sell Nega-Boomers when up n%", asset, df, buying_allocation=-1, buying_delay=7, selling_delay=4,
-            selling_allocation=1, buying_allocation_type='percent_portfolio', assets='options', strikes_above=1)
+            "Sell Nega-Boomers when up n%", asset, df, buying_allocation=-3, buying_delay=7, selling_delay=4,
+            selling_allocation=3, buying_allocation_type='percent_portfolio', assets='options', strikes_above=1)
         nega_week_low.set_selling_conditions(
             [Conditions.IsDownNPercent(df, portfolio, n=0.5),
              Conditions.IsSoldToOpen(df, portfolio),
@@ -293,6 +293,6 @@ if __name__ == "__main__":
         level=logging.INFO)
     # backtest_stocks()
     # backtest_crypto()
-    backtest_options(asset_list=["DOCU", "SE", "SPOT"],
+    backtest_options(asset_list=["QQQ"],
                      start_date='2020-06-01', end_date='2020-07-01', include_buy_sells=True)
     # backtest_options(asset_list=["NVDA", "SE", "DOCU", "AAPL", "SHOP", "TSLA"], start_date='2020-06-01', end_date='2020-07-01'):
