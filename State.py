@@ -273,7 +273,7 @@ class HoldingsStrategy(object):
     between deploying the strategy can it be deployed again
     """
 
-    def __init__(self, strategy_name, stock_name, data, buying_allocation=0.05, buying_allocation_type='percent_portfolio', maximum_allocation=1.0,
+    def __init__(self, strategy_name, stock_name, data, buying_allocation=0.05, buying_allocation_type='percent_portfolio', maximum_allocation=1.0, option_type='C',
                  minimum_allocation=0.0, buying_delay=1, selling_delay=0, selling_allocation=0.1, assets='stocks', must_be_profitable_to_sell=False, strikes_above=0):
         self._strategy_name = strategy_name
         self._stock_name = stock_name
@@ -293,6 +293,7 @@ class HoldingsStrategy(object):
         self._assets = assets
         self._must_be_profitable = must_be_profitable_to_sell
         self._strikes_above = strikes_above
+        self._option_type = option_type
 
     def __str__(self):
         """
@@ -323,6 +324,12 @@ class HoldingsStrategy(object):
         Returns: the buying conditions for this stock strategy
         """
         return self._stock_name
+
+    def get_option_type(self):
+        """
+        Returns: the option type
+        """
+        return self._option_type
 
     def get_buying_conditions(self):
         """
@@ -761,6 +768,7 @@ class Portfolio(object):
         Returns: the dataframe representing the option that is 1 month from expiry from today
         at a strike price just above strikes above.
         """
+        strikes_above = strikes_above * -1 if option_type == 'P' else strikes_above
         if last_price < 20:
             strike = round(last_price + strikes_above)
         elif last_price < 100:
@@ -798,14 +806,14 @@ class Portfolio(object):
         except:
             return None, ""
 
-    def buy_options(self, stock, stock_strategy, cur_date, cur_time):
+    def buy_options(self, stock, stock_strategy, cur_date, cur_time, option_type):
         """
         Helper function for buy to purchase options as opposed to shares.
         """
         abool = False
         last_price = stock_strategy.get_stock_price(cur_date, cur_time)
         df, symbol = self.get_options_data(
-            stock, last_price, cur_date, stock_strategy.get_strikes_above())
+            stock, last_price, cur_date, stock_strategy.get_strikes_above(), option_type)
         if df is None:
             return abool
         else:
@@ -853,7 +861,7 @@ class Portfolio(object):
         abool = False
         asset_type = stock_strategy.get_asset_type()
         if asset_type == 'options':
-            return self.buy_options(stock, stock_strategy, date, time)
+            return self.buy_options(stock, stock_strategy, date, time, stock_strategy.get_option_type())
         buying_allocation = stock_strategy.get_buying_allocation()
         max_allocation = stock_strategy.get_maximum_allocation()
         last_price = stock_strategy.get_stock_price(date, time)

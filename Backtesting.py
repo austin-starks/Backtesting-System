@@ -135,12 +135,13 @@ def backtest(asset_list, start_date, end_date, resolution, days, state, strategy
     portfolio_history, buy_history, sell_history = state.get_portfolio_history()
     ax = portfolio_history.plot()
     if plot_buy_sell_points:
+        plt.rcParams.update({'font.size': 8})
         int_i = 0
         for buy in buy_history:
             x = (buy[0]-date1_obj).days * resolution
             y = 0.9 * state.get_portfolio().get_portfolio_value(
                 date1_obj + timedelta(days=days_passed), current_time) - 500*int_i
-            y = 0.9**int_i*y
+            y = 0.95**int_i*y
             plt.axvline(x=x, color='red', linestyle='dashed')
             ax.text(x=x, y=y, s=f'b {buy[1]}')
             int_i += 1
@@ -151,7 +152,7 @@ def backtest(asset_list, start_date, end_date, resolution, days, state, strategy
             x = (sell[0]-date1_obj).days * resolution
             y = 0.9 * state.get_portfolio().get_portfolio_value(
                 date1_obj + timedelta(days=days_passed), current_time) - 500*int_i
-            y = 0.9**int_i*y
+            y = 0.5**int_i*y
             plt.axvline(x=x, color='blue', linestyle='dashed')
             ax.text(x=x, y=y, s=f's {sell[1]}')
             int_i += 1
@@ -239,45 +240,63 @@ def backtest_stocks(asset_list=["NVDA"], start_date='2019-01-15', end_date='2019
              resolution, 'all', state, strategy_list)
 
 
-def insert_strategy_list_options(asset_list, portfolio):
+def insert_strategy_list_options(asset_list, portfolio, option_type='C', buying_allocation=1):
     strategy_list = []
     for asset in asset_list:
         df = load_stock_data(asset)
+        if option_type == 'P':
+            condition = Conditions.IsHighForPeriod(
+                df, portfolio, 0, week_length=7)
+        else:
+            condition = Conditions.IsLowForPeriod(
+                df, portfolio, 3, week_length=7)
         week_low = State.HoldingsStrategy(
-            "Buy Boomers at week lows", asset, df, buying_allocation=3, buying_delay=7,
+            "Buy Boomers", asset, df, buying_allocation=buying_allocation, buying_delay=7, option_type=option_type,
             selling_allocation=1, buying_allocation_type='percent_portfolio', assets='options',)
         week_low.set_buying_conditions(
-            [Conditions.IsLowForPeriod(df, portfolio, 3, week_length=7)])
+            [condition])
         strategy_list.append(week_low)
         nega_week_low = State.HoldingsStrategy(
-            "Buy Nega-Boomers at week lows", asset, df, buying_allocation=-3, buying_delay=7,
+            "Buy Nega-Boomers", asset, df, buying_allocation=-1*buying_allocation, buying_delay=7, option_type=option_type,
             selling_allocation=3, buying_allocation_type='percent_portfolio', assets='options', strikes_above=1)
         nega_week_low.set_buying_conditions(
-            [Conditions.IsLowForPeriod(df, portfolio, 3, week_length=7),
+            [condition,
              Conditions.HasMoreBuyToOpen(df, portfolio, asset),
              ])
         strategy_list.append(nega_week_low)
 
-        nega_week_low = State.HoldingsStrategy(
-            "Sell Nega-Boomers when up n%", asset, df, buying_allocation=-3, buying_delay=7, selling_delay=4,
-            selling_allocation=3, buying_allocation_type='percent_portfolio', assets='options', strikes_above=1)
-        nega_week_low.set_selling_conditions(
+        sell_when_nega_up = State.HoldingsStrategy(
+            "Sell Nega-Boomers when up n%", asset, df, buying_allocation=-3, buying_delay=7, selling_delay=2,
+            selling_allocation=1, buying_allocation_type='percent_portfolio', assets='options', strikes_above=1)
+        sell_when_nega_up.set_selling_conditions(
             [Conditions.IsDownNPercent(df, portfolio, n=0.5),
              Conditions.IsSoldToOpen(df, portfolio),
              ])
-        strategy_list.append(nega_week_low)
+        strategy_list.append(sell_when_nega_up)
+
+        # sell_when_posa_up = State.HoldingsStrategy(
+        #     "Sell spread when up n%", asset, df, buying_allocation=-3, buying_delay=7, selling_delay=4,
+        #     selling_allocation=3, buying_allocation_type='percent_portfolio', assets='options', strikes_above=1)
+        # sell_when_posa_up.set_selling_conditions(
+        #     [Conditions.IsUpNPercent(df, portfolio, n=0.85),
+        #      ])
+        # strategy_list.append(sell_when_posa_up)
 
     return strategy_list
 
 
 def backtest_options(asset_list, start_date, end_date, include_buy_sells=True):
-    portfolio = State.Portfolio(initial_cash=6000, trading_fees=2.00)
+    portfolio = State.Portfolio(initial_cash=10000, trading_fees=5.00)
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
     date1_obj = date(date1[0], date1[1], date1[2])
-    strategy_list = insert_strategy_list_options(asset_list, portfolio)
+    strategy_list = insert_strategy_list_options(
+        ['SPY'], portfolio, 'P', buying_allocation=2)
+    strategy_list += insert_strategy_list_options(
+        asset_list, portfolio, 'C', buying_allocation=3)
+
     state = State.BacktestingState(
         portfolio, strategy_list, date1_obj, State.Resolution.Daily,
-        # allocation_hodl_dict_percent={'QQQ': 1.0}, allocation_hodl_dict_data={'QQQ': load_stock_data('QQQ')}
+        allocation_hodl_dict_percent={'SPY': 1.0}, allocation_hodl_dict_data={'SPY': load_stock_data('SPY')}
     )
     resolution = State.Resolution.Daily
     backtest(asset_list, start_date, end_date,
@@ -293,6 +312,8 @@ if __name__ == "__main__":
         level=logging.INFO)
     # backtest_stocks()
     # backtest_crypto()
-    backtest_options(asset_list=["QQQ"],
+    backtest_options(asset_list=["NVDA", "AAPL", "SE"],
                      start_date='2020-06-01', end_date='2020-07-01', include_buy_sells=True)
+    # backtest_options(asset_list=["QQQ"],
+    #                  start_date='2020-06-01', end_date='2020-07-01', include_buy_sells=True)
     # backtest_options(asset_list=["NVDA", "SE", "DOCU", "AAPL", "SHOP", "TSLA"], start_date='2020-06-01', end_date='2020-07-01'):

@@ -62,6 +62,46 @@ class Condition(ABC):
         self._holdings_to_sell = set()
 
 
+class IsUpNPercent(Condition):
+    """
+    A class representing if a holding is down n percent.
+    """
+
+    def __init__(self, data, portfolio, n=0.5):
+        super().__init__(data, portfolio)
+        self._current_price = None
+        self._n = n
+
+    def has_holdings_to_sell(self):
+        return True
+
+    def is_true(self, current_date, current_time, *args):
+        # print('is true')
+        abool = False
+        portfolio = self.get_portfolio()
+        holdings = portfolio.get_holdings()
+        strategies = portfolio.get_strategies()
+        for holding in holdings:
+            try:
+                # print(strategies)
+                # print(holding)
+                dataframe = strategies[holding.get_name()]
+                # print(dataframe.head())
+                today = State.HoldingsStrategy.get_stock_price_static(
+                    dataframe, current_date, current_time, holding.get_name())
+                # print("today", today)
+                initial_price = holding.get_initial_price()
+                if initial_price < 0:
+                    initial_price = initial_price * -1
+                if abs(today / initial_price) >= self._n:
+                    abool = True
+                    self._holdings_to_sell.add(holding)
+            except KeyError as e:
+                print(e)
+                pass
+        return abool
+
+
 class IsDownNPercent(Condition):
     """
     A class representing if a holding is down n percent.
@@ -93,21 +133,10 @@ class IsDownNPercent(Condition):
                 initial_price = holding.get_initial_price()
                 if initial_price < 0:
                     initial_price = initial_price * -1
-
                 if abs(today / initial_price) < self._n:
                     abool = True
-                    # Helper.log_warn("initial_price", initial_price)
-                    # Helper.log_warn("today", today)
-                    # Helper.log_warn('fraction', abs(
-                    #     (today / initial_price)))
-                    # Helper.log_warn('n', self._n)
-                    # Helper.log_warn("SELLLLLLL")
-                    # print("SELLLLLLL")
-                    # print("SELLLLLLL")
                     self._holdings_to_sell.add(holding)
-            except Exception as e:
-                # print(dataframe)
-                # print(today)
+            except KeyError as e:
                 print(e)
                 pass
         return abool
