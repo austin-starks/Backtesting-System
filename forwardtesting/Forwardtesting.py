@@ -6,6 +6,7 @@ import os
 import http.client
 import json
 import time
+import pprint
 
 
 def get_stock_quote(connection, symbol):
@@ -26,21 +27,22 @@ def get_stock_quote(connection, symbol):
         return None
 
 
-def market_is_closed():
+def market_is_open():
     tz = pytz.timezone('US/Eastern')
     us_holidays = holidays.US()
     now = datetime.datetime.now(tz)
     openTime = datetime.time(hour=9, minute=30, second=0)
     closeTime = datetime.time(hour=16, minute=0, second=0)
-    return now.strftime('%Y-%m-%d') in us_holidays or now.time() < openTime or now.time() > closeTime \
+    abool = now.strftime('%Y-%m-%d') in us_holidays or now.time() < openTime or now.time() > closeTime \
         or now.date().weekday() > 4
+    return not abool
 
 
 def forward_test(symbol):
     connection = http.client.HTTPSConnection(
         'sandbox.tradier.com', 443, timeout=30)
     while True:
-        if not market_is_closed():
+        if market_is_open():
             my_json = get_stock_quote(connection, symbol)
             print(my_json)
         else:
