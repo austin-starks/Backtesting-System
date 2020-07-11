@@ -195,7 +195,7 @@ class Holdings(object):
         return self._asset_name == other._asset_name
 
     def __str__(self):
-        return f"({self._asset_name} + | Num assets: {str(self._num_assets)} | Initial Purchase: {str(self._initial_purchase_date)})"
+        return f"({self._asset_name} | Num assets: {str(self._num_assets)} | Initial Purchase: {str(self._initial_purchase_date)})"
 
     def __repr__(self):
         return self.__str__()

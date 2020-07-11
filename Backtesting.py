@@ -290,8 +290,6 @@ def backtest_options(asset_list, start_date, end_date, include_buy_sells=True):
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
     date1_obj = date(date1[0], date1[1], date1[2])
     strategy_list = insert_strategy_list_options(
-        ['SPY'], portfolio, 'P', buying_allocation=2)
-    strategy_list += insert_strategy_list_options(
         asset_list, portfolio, 'C', buying_allocation=3)
 
     state = State.BacktestingState(
@@ -313,7 +311,7 @@ if __name__ == "__main__":
     # backtest_stocks()
     # backtest_crypto()
     backtest_options(asset_list=["NVDA", "AAPL", "SE"],
-                     start_date='2020-06-01', end_date='2020-07-01', include_buy_sells=True)
+                     start_date='2020-06-01', end_date='2020-07-01', include_buy_sells=False)
     # backtest_options(asset_list=["QQQ"],
     #                  start_date='2020-06-01', end_date='2020-07-01', include_buy_sells=True)
     # backtest_options(asset_list=["NVDA", "SE", "DOCU", "AAPL", "SHOP", "TSLA"], start_date='2020-06-01', end_date='2020-07-01'):
