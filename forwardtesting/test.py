@@ -21,7 +21,7 @@ cmds = (
     """
     CREATE TABLE portfolio (
         position_id VARCHAR(255),
-        portfolio_value float(2) NOT NULL, 
+        portfolio_cash float(2) NOT NULL, 
         time_last_updated TIMESTAMP NOT NULL,
         FOREIGN KEY (position_id) REFERENCES positions (position_id)
     )""",

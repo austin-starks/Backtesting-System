@@ -515,7 +515,7 @@ class Portfolio(object):
     """
 
     def __init__(self, initial_cash=100000.00,
-                 current_holdings=[], past_holdings=[], trading_fees=0.75):
+                 current_holdings=[], trading_fees=0.75):
 
         self._current_holdings = current_holdings
         self._buying_power = initial_cash

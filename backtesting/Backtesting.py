@@ -10,6 +10,7 @@ import Helper
 import State
 import os
 import os.path
+import sys
 import Conditions
 
 
@@ -138,10 +139,10 @@ def backtest(asset_list, start_date, end_date, resolution, days, state, strategy
         plt.rcParams.update({'font.size': 8})
         int_i = 0
         for buy in buy_history:
-            x = (buy[0]-date1_obj).days * resolution
+            x = (buy[0] - date1_obj).days * resolution
             y = 0.9 * state.get_portfolio().get_portfolio_value(
-                date1_obj + timedelta(days=days_passed), current_time) - 500*int_i
-            y = 0.95**int_i*y
+                date1_obj + timedelta(days=days_passed), current_time) - 500 * int_i
+            y = 0.95**int_i * y
             plt.axvline(x=x, color='red', linestyle='dashed')
             ax.text(x=x, y=y, s=f'b {buy[1]}')
             int_i += 1
@@ -149,10 +150,10 @@ def backtest(asset_list, start_date, end_date, resolution, days, state, strategy
                 int_i = 0
         int_i = 0
         for sell in sell_history:
-            x = (sell[0]-date1_obj).days * resolution
+            x = (sell[0] - date1_obj).days * resolution
             y = 0.9 * state.get_portfolio().get_portfolio_value(
-                date1_obj + timedelta(days=days_passed), current_time) - 500*int_i
-            y = 0.5**int_i*y
+                date1_obj + timedelta(days=days_passed), current_time) - 500 * int_i
+            y = 0.5**int_i * y
             plt.axvline(x=x, color='blue', linestyle='dashed')
             ax.text(x=x, y=y, s=f's {sell[1]}')
             int_i += 1
@@ -257,7 +258,7 @@ def insert_strategy_list_options(asset_list, portfolio, option_type='C', buying_
             [condition])
         strategy_list.append(week_low)
         nega_week_low = State.HoldingsStrategy(
-            "Buy Nega-Boomers", asset, df, buying_allocation=-1*buying_allocation, buying_delay=7, option_type=option_type,
+            "Buy Nega-Boomers", asset, df, buying_allocation=-1 * buying_allocation, buying_delay=7, option_type=option_type,
             selling_allocation=3, buying_allocation_type='percent_portfolio', assets='options', strikes_above=1)
         nega_week_low.set_buying_conditions(
             [condition,
@@ -303,8 +304,9 @@ def backtest_options(asset_list, start_date, end_date, include_buy_sells=True):
 
 if __name__ == "__main__":
     # clear_logs()
+    base_dir = os.path.abspath('./logs')
     logging.basicConfig(
-        filename=f'logs/{datetime.now().strftime("%m-%d-%Y %H:%M:%S")}.log',
+        filename=f'{base_dir}/{datetime.now().strftime("%m-%d-%Y %H:%M:%S")}.log',
         format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
         datefmt='%Y-%m-%d:%H:%M:%S',
         level=logging.INFO)

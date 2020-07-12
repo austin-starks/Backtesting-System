@@ -3,10 +3,27 @@ import datetime
 import pytz
 import holidays
 import os
+import sys
 import http.client
 import json
 import time
-import pprint
+import pandas_datareader
+import pandas as pd
+import Conditions
+import State
+
+
+def load_stock_data(stock):
+    if os.path.exists(f"price_data/{stock}.csv"):
+        df = pd.read_csv(
+            f"price_data/{stock}.csv", index_col="Date")
+    else:
+        df = pandas_datareader.data.DataReader(stock,
+                                               start='2020-5-1',
+                                               end=datetime.date.today().strftime("%m/%d/%Y"),
+                                               data_source='yahoo')
+        df.to_csv(f"price_data/{stock}.csv")
+    return df
 
 
 def get_stock_quote(connection, symbol):
@@ -19,10 +36,8 @@ def get_stock_quote(connection, symbol):
         response = connection.getresponse()
         content = response.read().decode("utf-8")
         my_json = json.loads(content)
-        # Success
         return my_json
     except http.client.HTTPException as e:
-        # Exception
         print("Exception during request", e)
         return None
 
@@ -38,16 +53,27 @@ def market_is_open():
     return not abool
 
 
+def buy_or_sell(df, portfolio, price):
+    buying_condition = Conditions.IsLowForPeriod(
+        df, portfolio, 3, week_length=7)
+    buying_condition.is_true('2020-07-10', price)
+    print(df)
+
+
 def forward_test(symbol):
     connection = http.client.HTTPSConnection(
         'sandbox.tradier.com', 443, timeout=30)
+    df = load_stock_data(symbol)
+    portfolio = State.Portfolio()
     while True:
-        if market_is_open():
+        if not market_is_open():
             my_json = get_stock_quote(connection, symbol)
-            print(my_json)
+            price = my_json['quotes']['quote']['last']
+            print('price', price)
+            buy_or_sell(df, portfolio, price)
         else:
             print("Market is closed")
-        time.sleep(10)
+        time.sleep(3)
 
 
 if __name__ == "__main__":
