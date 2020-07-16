@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import pandas as pd
-from datetime import date, timedelta
+import datetime
 import re
 
 
@@ -92,8 +92,7 @@ class IsUpNPercent(Condition):
                     abool = True
                     self._holdings_to_sell.add(holding)
             except KeyError as e:
-                print(e)
-                pass
+                print("Exception", e)
         return abool
 
 
@@ -130,7 +129,6 @@ class IsDownNPercent(Condition):
                     self._holdings_to_sell.add(holding)
             except KeyError as e:
                 print(e)
-                pass
         return abool
 
 
@@ -163,15 +161,13 @@ class TimePeriodCondition(Condition):
                 today = today.strftime("%Y/%m/%d")
             arr = []
             i = 0
-            print(str(dataframe.iloc[-1].name), today)
-            assert False
             # warm-up data with everyday starting from yesterday
             while len(arr) < self._week_length:
                 i -= 1
                 try:
                     arr.append(dataframe.iloc[i])
-                except KeyError:
-                    pass
+                except KeyError as e:
+                    print(e)
             self._changing_week_data = pd.DataFrame(arr[::-1])
 
     def add_datapoint(self, datapoint):
@@ -209,11 +205,14 @@ class IsLowForPeriod(TimePeriodCondition):
             # print("price + sd", current_price +
             #       (self._standard_deviation * self._changing_week_data["Close"].std()))
             # print("lowest price", lowest_price)
+            print("current_price", current_price, type(current_price))
             if current_price < lowest_price + (self._standard_deviation * self._changing_week_data["Close"].std()):
-                # print(current_price, lowest_price)
+                # print("lowest_price", lowest_price)
+                # print((self._standard_deviation *
+                #        self._changing_week_data["Close"].std()))
                 abool = True
-        except KeyError:
-            pass
+        except KeyError as e:
+            print("Exception", e)
         return abool
 
     def is_true(self, current_date, current_price):
