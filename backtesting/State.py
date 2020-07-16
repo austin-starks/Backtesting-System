@@ -1,5 +1,4 @@
 from enum import IntFlag
-import Conditions
 from datetime import date, timedelta, datetime
 import Helper
 import pandas as pd
@@ -17,7 +16,7 @@ class BacktestingState(object):
     a backtest
     """
 
-    def __init__(self, portfolio, strategy_list, current_date, resolution,
+    def __init__(self, portfolio, strategy, current_date, resolution,
                  allocation_hodl_dict_percent=None, allocation_hodl_dict_data=None):
         if allocation_hodl_dict_data is not None:
             for data in allocation_hodl_dict_data:
@@ -26,7 +25,7 @@ class BacktestingState(object):
             for data in allocation_hodl_dict_percent:
                 assert data in allocation_hodl_dict_data
         self._portfolio = portfolio
-        self._strategy_list = strategy_list
+        self._strategy = strategy
         self._portfolio_history = pd.DataFrame(
             columns=["Strategy Value", "HODL Value"])
         self._history_length = 0
@@ -61,6 +60,12 @@ class BacktestingState(object):
         """
         return self._portfolio_history, self._buy_history, self._sell_history
 
+    def get_strategy(self):
+        """
+        Returns: the stategy for this state
+        """
+        return self._strategy
+
     def set_compare_function(self):
         """
         Sets a hodl strategy to compare against a stock strategy/
@@ -79,7 +84,7 @@ class BacktestingState(object):
                 self._allocation_data[name] = df
             len_holdings = len(self._hodl_comparison_dict)
             for holding in self._hodl_comparison_dict:
-                self._hodl_comparison_dict[holding] = self._hodl_comparison_dict[holding]/len_holdings
+                self._hodl_comparison_dict[holding] = self._hodl_comparison_dict[holding] / len_holdings
 
         else:
             for key in self._allocation_data:
@@ -88,12 +93,6 @@ class BacktestingState(object):
                     df, current_date, current_time, key)
                 self._hodl_comparison_dict[key] = (self._allocation_dict[key] * self._portfolio.get_initial_value(
                 )) / price
-
-    def get_strategy_list(self):
-        """
-        Returns: the strategy list for this stock in this state
-        """
-        return self._strategy_list
 
     def get_portfolio(self):
         """
@@ -117,7 +116,7 @@ class BacktestingState(object):
             f"Percent Change from Start: {percent_change['Strategy Value']}%\n" + \
             f"Percent Change for HODL: {percent_change['HODL Value']}%"
 
-    def update_portfolio_value(self, cur_date, cur_time, strategies):
+    def update_portfolio_value(self, cur_date, cur_time):
         """
         Adds the portfolio value (and HODL value)
         """
@@ -141,13 +140,6 @@ class BacktestingState(object):
                 expiration_obj = datetime(int(expiration_match.group(1)),
                                           int(expiration_match.group(2)), int(expiration_match.group(3)))
                 if cur_date > expiration_obj.date():
-                    for strategy in strategies:
-                        selling_conditions = strategy.get_selling_conditions()
-                        for condition in selling_conditions:
-                            if condition.has_holdings_to_sell():
-                                holdings_to_sell = condition.get_holdings_to_sell()
-                                if holding in holdings_to_sell:
-                                    condition.delete_holding(holding)
                     self._portfolio.liquidate(
                         holding, expiration_obj.date())
 
@@ -349,18 +341,6 @@ class HoldingsStrategy(object):
         """
         return self._strikes_above
 
-    def set_buying_conditions(self, condition_list):
-        """
-        Sets the buying condition to be condition_list
-        """
-        self._buying_conditions = condition_list
-
-    def set_selling_conditions(self, condition_list):
-        """
-        Sets the selling condition to be condition_list
-        """
-        self._selling_conditions = condition_list
-
     def acknowledge_buy(self, date, time):
         """
         Sets last purchase to be a tuple of the last time this stock strategy bought an asset
@@ -391,24 +371,13 @@ class HoldingsStrategy(object):
         """
         Returns: True if buying conditions are met; False otherwise
         """
-        abool = False if self._buying_conditions == [] else True
-        self._last_price = self.get_stock_price(date, time)
-        for condition in self._buying_conditions:
-            abool = abool and condition.is_true(date, time, self._assets)
-        return abool and (self._last_purchase is None or self._last_purchase[0] + timedelta(self._buying_delay) <= date)
+        return False
 
     def selling_conditions_are_met(self, date, time, is_profitable=True):
         """
         Returns: True if selling conditions are met; False otherwise
         """
-        abool = False if self._selling_conditions == [] else True
-        for condition in self._selling_conditions:
-            if self._must_be_profitable:
-                abool = abool and is_profitable and condition.is_true(
-                    date, time, self._assets)
-            else:
-                abool = abool and condition.is_true(date, time, self._assets)
-        return abool and (self._last_sale is None or self._last_sale[0] + timedelta(self._selling_delay) <= date)
+        return False
 
     def get_buying_allocation(self):
         """
@@ -483,7 +452,7 @@ class HoldingsStrategy(object):
                                         for x in re.split(r'[\-]', iloc.name)]
                             date_obj = date(
                                 date_arr[0], date_arr[1], date_arr[2])
-                        iloc2 = df.iloc[j-1]
+                        iloc2 = df.iloc[j - 1]
                         date_arr2 = [int(x)
                                      for x in re.split(r'[\-]', iloc2.name)]
                         date_obj2 = date(
@@ -557,12 +526,6 @@ class Portfolio(object):
         """
         return self._initial_value
 
-    def get_strategies(self):
-        """
-        Returns: the dataframes for the strategies in this portfolio
-        """
-        return self._strategies
-
     def get_buying_power(self):
         """
         Returns: the current buying power of the portfolio
@@ -624,7 +587,7 @@ class Portfolio(object):
             for holding in self._current_holdings:
                 if holding.get_name() == stock:
                     holdings_value += holding.get_num_assets() * last_price
-            return holdings_value/self.get_portfolio_value(date, time)
+            return holdings_value / self.get_portfolio_value(date, time)
         else:
             return 0.0
 
@@ -723,17 +686,17 @@ class Portfolio(object):
             elif type_allo == float:
                 if buying_allo_type == 'percent_portfolio':
                     dollars_to_spend = self.get_portfolio_value(
-                        date, time)*buying_allocation
+                        date, time) * buying_allocation
                     num_shares = int(dollars_to_spend // last_price)
                 elif buying_allo_type == 'percent_bp':
-                    dollars_to_spend = self.get_buying_power()*buying_allocation
+                    dollars_to_spend = self.get_buying_power() * buying_allocation
                     num_shares = int(dollars_to_spend // last_price)
                 else:
                     Helper.log_error("Invalid buying allocation type")
             else:
                 Helper.log_error(
                     f"Buying allocation should be an int or float")
-            return num_shares, num_shares*last_price
+            return num_shares, num_shares * last_price
         elif asset_type == 'crypto':
             if type_allo == int:
                 dollars_to_spend = buying_allocation * last_price
@@ -741,10 +704,10 @@ class Portfolio(object):
             elif type_allo == float:
                 if buying_allo_type == 'percent_portfolio':
                     dollars_to_spend = self.get_portfolio_value(
-                        date, time)*buying_allocation
+                        date, time) * buying_allocation
                     num_shares = dollars_to_spend / last_price
                 elif buying_allo_type == 'percent_bp':
-                    dollars_to_spend = self.get_buying_power()*buying_allocation
+                    dollars_to_spend = self.get_buying_power() * buying_allocation
                     num_shares = dollars_to_spend / last_price
                 else:
                     Helper.log_error("Invalid buying allocation type")
@@ -759,7 +722,7 @@ class Portfolio(object):
         first_day_of_month = datetime(now.year, now.month, 1)
         first_friday = first_day_of_month + \
             timedelta(
-                days=((4-calendar.monthrange(now.year, now.month)[0])+7) % 7)
+                days=((4 - calendar.monthrange(now.year, now.month)[0]) + 7) % 7)
         # 4 is friday of week
         return first_friday + timedelta(days=14)
 
@@ -772,9 +735,9 @@ class Portfolio(object):
         if last_price < 20:
             strike = round(last_price + strikes_above)
         elif last_price < 100:
-            strike = 5 * round((last_price + 5*strikes_above) / 5)
+            strike = 5 * round((last_price + 5 * strikes_above) / 5)
         else:
-            strike = 10 * round((last_price + 10*strikes_above) / 10)
+            strike = 10 * round((last_price + 10 * strikes_above) / 10)
         # Get strike price 4 weeks out
         friday = Portfolio._option_expiration(current_date)
         if friday.date() - current_date < timedelta(14):
@@ -788,7 +751,7 @@ class Portfolio(object):
         api_key = os.environ['TRADIER_API_KEY']
         try:
             trade_data_response = requests.get('https://sandbox.tradier.com/v1/markets/history?',
-                                               params={'symbol':  symbol,
+                                               params={'symbol': symbol,
                                                        'start': str(current_date)},
                                                headers={'Authorization': api_key,
                                                         'Accept': 'application/json'})
@@ -822,7 +785,7 @@ class Portfolio(object):
         try:
             holdings_price = HoldingsStrategy.get_stock_price_static(
                 df, cur_date, cur_time, stock_strategy.get_asset_name())
-            total_price = 100*num_contracts * holdings_price
+            total_price = 100 * num_contracts * holdings_price
             buying_power = self.get_buying_power()
             max_allocation = stock_strategy.get_maximum_allocation()
             if self.get_current_allocation(stock, last_price, cur_date, cur_time) + total_price > \
