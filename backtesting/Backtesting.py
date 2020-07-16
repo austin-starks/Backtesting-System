@@ -312,8 +312,8 @@ if __name__ == "__main__":
         level=logging.INFO)
     # backtest_stocks()
     # backtest_crypto()
-    backtest_options(asset_list=["NVDA", "AAPL", "SE"],
-                     start_date='2020-06-01', end_date='2020-07-01', include_buy_sells=False)
+    backtest_options(asset_list=["CHGG"],
+                     start_date='2020-02-28', end_date='2020-03-28', include_buy_sells=False)
     # backtest_options(asset_list=["QQQ"],
     #                  start_date='2020-06-01', end_date='2020-07-01', include_buy_sells=True)
     # backtest_options(asset_list=["NVDA", "SE", "DOCU", "AAPL", "SHOP", "TSLA"], start_date='2020-06-01', end_date='2020-07-01'):
