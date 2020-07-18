@@ -1,5 +1,4 @@
 from datetime import date, datetime, timedelta
-from pandas_datareader import data
 import matplotlib.pyplot as plt
 import re
 import pandas as pd
@@ -22,25 +21,6 @@ def clear_logs():
         for i in range(len_list - 5):
             filename = os.path.join(directory, filelist[i])
             os.remove(filename)
-
-
-def load_stock_data(stock):
-    if os.path.exists(f"price_data/daily/{stock}.csv"):
-        df = pd.read_csv(
-            f"price_data/daily/{stock}.csv", index_col="Date")
-    else:
-        df = data.DataReader(stock,
-                             start='1900-1-1',
-                             end=date.today().strftime("%m/%d/%Y"),
-                             data_source='yahoo')
-        df.to_csv(f"price_data/daily/{stock}.csv")
-    return df
-
-
-def load_crypto_data(crypto):
-    df = pd.read_csv(
-        f"price_data/hourly/{crypto}.csv", index_col="Date")
-    return df
 
 
 def check_backtest_preconditions(start_date, end_date, resolution, days):
@@ -160,10 +140,12 @@ def backtest_options(asset_list, start_date, end_date, include_buy_sells=True):
     portfolio = State.Portfolio(initial_cash=10000, trading_fees=5.00)
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
     date1_obj = date(date1[0], date1[1], date1[2])
+    strategy = State.HoldingsStrategy(
+        "Buying at weekly lows", asset_list, assets=State.Assets.Spreads)
 
     state = State.BacktestingState(
-        portfolio, None, date1_obj, State.Resolution.Daily,
-        allocation_hodl_dict_percent={'SPY': 1.0}, allocation_hodl_dict_data={'SPY': load_stock_data('SPY')}
+        portfolio, strategy, date1_obj, State.Resolution.Daily,
+        allocation_hodl_dict_percent={'SPY': 1.0}
     )
     resolution = State.Resolution.Daily
     backtest(asset_list, start_date, end_date,
