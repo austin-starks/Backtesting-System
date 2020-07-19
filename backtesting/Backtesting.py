@@ -59,30 +59,27 @@ def check_backtest_preconditions(start_date, end_date, resolution, days):
     Helper.log_info("Preconditions checked")
 
 
-def backtest_buy(stock_strategy, current_date, current_time, portfolio, state):
-    if stock_strategy.buying_conditions_are_met(current_date, current_time):
-        buy_success = portfolio.buy(stock_strategy, current_date, current_time)
-        if buy_success:
-            state.acknowledge_buy(stock_strategy, current_date, current_time)
+def backtest_buy(state, current_date, current_time, portfolio):
+    stock_strategy = state.get_strategy()
+    if state.buying_conditions_are_met(current_date, current_time):
+        portfolio.buy(stock_strategy, current_date, current_time)
 
 
-def backtest_sell(stock_strategy, current_date, current_time, portfolio, state):
+def backtest_sell(state, current_date, current_time, portfolio):
+    stock_strategy = state.get_strategy()
     if stock_strategy.must_be_profitable():
         is_profitable = portfolio.is_profitable(current_date, current_time)
     else:
         is_profitable = True
-    if is_profitable and stock_strategy.selling_conditions_are_met(current_date, current_time, is_profitable):
-        sell_success = portfolio.sell(
+    if is_profitable and state.selling_conditions_are_met(current_date, current_time, is_profitable):
+        portfolio.sell(
             stock_strategy, current_date, current_time)
-        if sell_success:
-            state.acknowledge_sell(stock_strategy, current_date, current_time)
 
 
 def backtest_loop_helper(asset_list, current_date, current_time, state):
-    strategy = state.get_strategy()
     portfolio = state.get_portfolio()
-    backtest_buy(strategy, current_date, current_time, portfolio, state)
-    backtest_sell(strategy, current_date, current_time, portfolio, state)
+    backtest_buy(state, current_date, current_time, portfolio)
+    backtest_sell(state, current_date, current_time, portfolio)
 
 
 def backtest_loop(asset_list, state, resolution, date1_obj, epochs, current_time, current_epoch):

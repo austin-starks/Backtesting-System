@@ -99,6 +99,7 @@ class IsLowForPeriod(TimePeriodCondition):
         """
         Helper function for is_true for handling stock data
         """
+        stocks_to_buy = set()
         for key in self._asset_info:
             dataframe = self._asset_info[key]
             abool = False
@@ -123,9 +124,14 @@ class IsLowForPeriod(TimePeriodCondition):
                     print(
                         f"{key} is low enough to buy at {current_date} {current_time}")
                     abool = True
+                    stocks_to_buy.add(
+                        (key, current_date, current_time, current_price))
                 if current_time.is_eod():
                     # print("Is eod")
                     self.add_datapoint(key, today)
             except KeyError as e:
                 print("Exception", e)
-        return abool
+        if abool:
+            return abool, stocks_to_buy
+        else:
+            return abool, None

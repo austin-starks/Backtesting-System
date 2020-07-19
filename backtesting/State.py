@@ -60,22 +60,6 @@ class BacktestingState(object):
         self._buy_history = []
         self._sell_history = []
 
-    def acknowledge_buy(self, stock_strategy, cur_date, cur_time):
-        """
-        Acknowledges that a purchase was made
-        """
-        stock_strategy.acknowledge_buy(cur_date, cur_time)
-        if stock_strategy.get_buying_allocation() > 0:
-            self._buy_history.append(
-                (cur_date, stock_strategy.get_asset_name()))
-
-    def acknowledge_sell(self, stock_strategy, cur_date, cur_time):
-        """
-        Acknowledges that a purchase was made
-        """
-        stock_strategy.acknowledge_sell(cur_date, cur_time)
-        self._sell_history.append((cur_date, stock_strategy.get_asset_name()))
-
     def get_portfolio_history(self):
         """
         Returns: the portfolio history
@@ -87,6 +71,28 @@ class BacktestingState(object):
         Returns: the stategy for this state
         """
         return self._strategy
+
+    def buying_conditions_are_met(self, current_date, current_time):
+        """
+        Returns: True if buying conditions are met. False otherwise
+        """
+        conditions_are_met = self._strategy.buying_conditions_are_met(
+            current_date, current_time)
+        if not conditions_are_met[0]:
+            return False
+        print(conditions_are_met)
+        return False
+
+    def selling_conditions_are_met(self, current_date, current_time, is_profitable=True):
+        """
+        Returns: True if selling conditions are met. False otherwise
+        """
+        conditions_are_met = self._strategy.selling_conditions_are_met(
+            current_date, current_time, is_profitable)
+        if not conditions_are_met[0]:
+            return False
+        print(conditions_are_met)
+        return False
 
     def set_compare_function(self):
         """
@@ -111,7 +117,6 @@ class BacktestingState(object):
 
         # else:
         for key in self._allocation_data:
-            df = self._allocation_data[key]
             price = self._strategy.get_stock_price(
                 key, current_date, current_time)
             self._hodl_comparison_dict[key] = (self._allocation_dict[key] * self._portfolio.get_initial_value(
@@ -447,7 +452,7 @@ class HoldingsStrategy(object):
                                 time)] + df.loc[str(date_obj2)].loc[str(time)]) / 2
                         answer = round(answer, 2)
                         Helper.log_warn(
-                            f"Options price not found; estimating options price for {holding_name} at ${answer} on {current_date}")
+                            f"Options price not found; estimating options price for {stock} at ${answer} on {current_date}")
                         Helper.log_warn(df)
                         Helper.log_warn(f"Date not found: {current_date}")
                         return answer
@@ -458,14 +463,14 @@ class HoldingsStrategy(object):
         """
         Returns: True if buying conditions are met; False otherwise
         """
-        self._buying_conditions.is_true(date, time)
-        return False
+        conditions_are_met = self._buying_conditions.is_true(date, time)
+        return conditions_are_met
 
     def selling_conditions_are_met(self, date, time, is_profitable=True):
         """
         Returns: True if selling conditions are met; False otherwise
         """
-        return False
+        return (False, None)
 
     def get_buying_allocation(self):
         """
@@ -530,7 +535,7 @@ class Portfolio(object):
         """
         abool = False
         holding_name = holding.get_name()
-        last_price = self._stategy.get_stock_price(
+        last_price = self._strategy.get_stock_price(
             holding_name, expiration_date, "Close", holding_name)
         num_contracts = holding.get_num_assets()
         total_price = 100 * num_contracts * last_price
