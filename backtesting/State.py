@@ -338,9 +338,15 @@ class HoldingsStrategy(object):
 
     def get_asset_names(self):
         """
-        Returns: the buying conditions for this stock strategy
+        Returns: the asset names
         """
         return self._stock_list
+
+    def get_asset_info(self):
+        """
+        Returns: The dataframes for stocks in this stock strategy
+        """
+        return self._asset_info
 
     def get_option_type(self):
         """
@@ -359,6 +365,18 @@ class HoldingsStrategy(object):
         Returns: the selling conditions for this stock strategy
         """
         return self._selling_conditions
+
+    def set_buying_conditions(self, buying_conditions):
+        """
+        Sets the buying conditions to buying_conditon
+        """
+        self._buying_conditions = buying_conditions
+
+    def set_selling_conditions(self, selling_conditions):
+        """
+        Sets the selling conditions to selling_conditon
+        """
+        self._selling_conditions = selling_conditions
 
     def get_strikes_above(self):
         """

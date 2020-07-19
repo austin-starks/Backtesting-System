@@ -10,6 +10,7 @@ import State
 import os
 import os.path
 import sys
+import Conditions
 
 
 def clear_logs():
@@ -142,6 +143,7 @@ def backtest_options(asset_list, start_date, end_date, include_buy_sells=True):
     date1_obj = date(date1[0], date1[1], date1[2])
     strategy = State.HoldingsStrategy(
         "Buying at weekly lows", asset_list, assets=State.Assets.Spreads)
+    strategy.set_buying_conditions(Conditions.IsLowForWeek(strategy))
 
     state = State.BacktestingState(
         portfolio, strategy, date1_obj, State.Resolution.Daily,
