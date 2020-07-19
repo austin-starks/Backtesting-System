@@ -1,4 +1,8 @@
 from abc import ABC, abstractmethod
+import pandas as pd
+from datetime import date, datetime, timedelta
+import re
+import sys
 
 
 class Condition(ABC):
@@ -19,33 +23,109 @@ class Condition(ABC):
         return False
 
 
-class IsLowForWeek(Condition):
+class TimePeriodCondition(Condition):
     """
-    A class determining whether the stock is low for the week
+    Condition parent class for conditions that has to deal with a stock's price
+    within a time period.
     """
+
+    def __init__(self, strategy, sd=0, week_length=5):
+        super().__init__(strategy)
+        self._standard_deviation = sd
+        self._week_length = week_length
+        self._changing_week_data = dict()
+        self._changing_day_data = pd.DataFrame()
+
+    def get_week_length(self):
+        """
+        Returns: the length of the time period to consider. Default: 5
+        """
+        return self._week_length
+
+    def warm_up_data(self, stock_name, datapoint):
+        """
+        Warms-p changing_data to be prefilled with values.
+        """
+        if not stock_name in self._changing_week_data:
+            dataframe = self._asset_info[stock_name]
+            today = datapoint.name
+            if type(today) == pd._libs.tslibs.timestamps.Timestamp:
+                today = today.strftime("%Y/%m/%d")
+            date_arr = [int(x) for x in re.split(r'[\-/]', today)]
+            date_obj = date(date_arr[0], date_arr[1], date_arr[2])
+            tmp_dict = {}
+            i = 0
+            while len(tmp_dict) < self._week_length:
+                i -= 1
+                delta = timedelta(days=i)
+                tmp_date = (date_obj + delta).strftime("%Y-%m-%d")
+                try:
+                    tmp_dict[tmp_date] = dataframe.loc[tmp_date]
+                except KeyError:
+                    pass
+            # print(tmp_dict)
+            # print('index', tmp_dict.values())
+            df = pd.DataFrame(tmp_dict.values(), index=tmp_dict.keys(),
+                              columns=("Low", "Open", "Close", "High", "Volume", "Adj Close"))
+            df.sort_index(inplace=True)
+            self._changing_week_data[stock_name] = df
+            # print(self._changing_week_data[stock_name])
+
+    def add_datapoint(self, stock_name, datapoint):
+        """
+        Adds a datapoint to the changing data.
+        """
+        # print("before", self._changing_week_data)
+        self._changing_week_data[stock_name] = self._changing_week_data[stock_name][1:]
+        # print('during', self._changing_week_data)
+        self._changing_week_data[stock_name] = self._changing_week_data[stock_name].append(
+            datapoint)
+        # print('after', self._changing_week_data)
+        # print(datapoint)
+        if len(self._changing_week_data[stock_name]) < self._week_length:
+            assert False
+
+
+class IsLowForPeriod(TimePeriodCondition):
+    """
+    Condition: Is True if the stock is low for the week (+/- n standard
+    deviations). False otherwise
+    """
+
+    def __init__(self, strategy, sd=0, week_length=5):
+        super().__init__(strategy, sd, week_length)
 
     def is_true(self, current_date, current_time):
         """
-        Returns: True if the stock is low for the week, False otherwise 
+        Helper function for is_true for handling stock data
         """
-        for stock_name in self._asset_info:
-            dataframe = self._asset_info[stock_name]
+        for key in self._asset_info:
+            dataframe = self._asset_info[key]
             abool = False
             try:
                 today = dataframe.loc[str(current_date)]
-                self.warm_up_data(today)
+                self.warm_up_data(key, today)
+                # print("warmed up")
                 current_price = round(
                     today.loc[str(current_time)], 2)
+                # print("current price", current_price)
                 # if current price < lowest price in dataframe, abool = True
-                lowest_price = self._changing_week_data["Close"].min()
+                # print('close', self._changing_week_data[key]['Close'])
+                lowest_price = self._changing_week_data[key]["Close"].min()
+                # print('lowest', lowest_price, type(lowest_price))
+                # print("lowest price", lowest_price)
                 # print("price + sd", current_price +
                 #       (self._standard_deviation * self._changing_week_data["Close"].std()))
                 # print("lowest price", lowest_price)
-                if current_price < lowest_price + (self._standard_deviation * self._changing_week_data["Close"].std()):
+
+                if current_price < lowest_price + (self._standard_deviation * self._changing_week_data[key]["Close"].std()):
                     # print(current_price, lowest_price)
+                    print(
+                        f"{key} is low enough to buy at {current_date} {current_time}")
                     abool = True
                 if current_time.is_eod():
-                    self.add_datapoint(today)
-            except KeyError:
-                pass
-            return abool
+                    # print("Is eod")
+                    self.add_datapoint(key, today)
+            except KeyError as e:
+                print("Exception", e)
+        return abool

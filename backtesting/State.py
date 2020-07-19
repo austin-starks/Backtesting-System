@@ -15,7 +15,7 @@ def load_stock_data(stock):
             f"price_data/daily/{stock}.csv", index_col="Date")
     else:
         df = data.DataReader(stock,
-                             start='1900-1-1',
+                             start='2015-01-01',
                              end=date.today().strftime("%m/%d/%Y"),
                              data_source='yahoo')
         df.to_csv(f"price_data/daily/{stock}.csv")
@@ -458,6 +458,7 @@ class HoldingsStrategy(object):
         """
         Returns: True if buying conditions are met; False otherwise
         """
+        self._buying_conditions.is_true(date, time)
         return False
 
     def selling_conditions_are_met(self, date, time, is_profitable=True):

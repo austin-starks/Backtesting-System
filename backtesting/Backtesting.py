@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+import datetime
 import matplotlib.pyplot as plt
 import re
 import pandas as pd
@@ -10,7 +10,15 @@ import State
 import os
 import os.path
 import sys
+import pytz
+import holidays
 import Conditions
+
+
+def market_is_open(now):
+    us_holidays = holidays.US()
+    abool = now.strftime('%Y-%m-%d') in us_holidays or now.weekday() > 4
+    return not abool
 
 
 def clear_logs():
@@ -35,8 +43,8 @@ def check_backtest_preconditions(start_date, end_date, resolution, days):
             date_is_valid = date_is_valid and int(x) > 0 and int(y) > 0
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
     date2 = [int(x) for x in re.split(r'[\-]', end_date)]
-    date1_obj = date(date2[0], date2[1], date2[2])
-    date2_obj = date(date1[0], date1[1], date1[2])
+    date1_obj = datetime.date(date2[0], date2[1], date2[2])
+    date2_obj = datetime.date(date1[0], date1[1], date1[2])
     epochs = (date1_obj - date2_obj).days
     date_is_valid = date_is_valid and epochs >= 0
     if not date_is_valid:
@@ -80,10 +88,10 @@ def backtest_loop_helper(asset_list, current_date, current_time, state):
 def backtest_loop(asset_list, state, resolution, date1_obj, epochs, current_time, current_epoch):
     while current_epoch <= epochs:
         day_delta = current_epoch // resolution
-        current_date = date1_obj + timedelta(days=day_delta)
-        state.update_portfolio_value(current_date, current_time)
-        backtest_loop_helper(asset_list, current_date, current_time, state)
-
+        current_date = date1_obj + datetime.timedelta(days=day_delta)
+        if market_is_open(current_date):
+            state.update_portfolio_value(current_date, current_time)
+            backtest_loop_helper(asset_list, current_date, current_time, state)
         current_time.forward_time(resolution)
         current_epoch += 1
     return day_delta
@@ -95,8 +103,8 @@ def backtest(asset_list, start_date, end_date, resolution, days, state, plot_buy
     if days == 'All' or days == 'all':
         date1 = [int(x) for x in re.split(r'[\-]', start_date)]
         date2 = [int(x) for x in re.split(r'[\-]', end_date)]
-        date1_obj = date(date1[0], date1[1], date1[2])
-        date2_obj = date(date2[0], date2[1], date2[2])
+        date1_obj = datetime.date(date1[0], date1[1], date1[2])
+        date2_obj = datetime.date(date2[0], date2[1], date2[2])
         epochs = (date2_obj - date1_obj).days
     elif type(days) == int and days > 0:
         epochs = days
@@ -113,7 +121,7 @@ def backtest(asset_list, start_date, end_date, resolution, days, state, plot_buy
         for buy in buy_history:
             x = (buy[0] - date1_obj).days * resolution
             y = 0.9 * state.get_portfolio().get_portfolio_value(
-                date1_obj + timedelta(days=days_passed), current_time) - 500 * int_i
+                date1_obj + datetime.timedelta(days=days_passed), current_time) - 500 * int_i
             y = 0.95**int_i * y
             plt.axvline(x=x, color='red', linestyle='dashed')
             ax.text(x=x, y=y, s=f'b {buy[1]}')
@@ -124,7 +132,7 @@ def backtest(asset_list, start_date, end_date, resolution, days, state, plot_buy
         for sell in sell_history:
             x = (sell[0] - date1_obj).days * resolution
             y = 0.9 * state.get_portfolio().get_portfolio_value(
-                date1_obj + timedelta(days=days_passed), current_time) - 500 * int_i
+                date1_obj + datetime.timedelta(days=days_passed), current_time) - 500 * int_i
             y = 0.5**int_i * y
             plt.axvline(x=x, color='blue', linestyle='dashed')
             ax.text(x=x, y=y, s=f's {sell[1]}')
@@ -134,16 +142,16 @@ def backtest(asset_list, start_date, end_date, resolution, days, state, plot_buy
     plt.show()
     Helper.log_info("Backtest complete")
     Helper.log_info(state.get_portfolio_snapshot(
-        date1_obj + timedelta(days=days_passed), current_time))
+        date1_obj + datetime.timedelta(days=days_passed), current_time))
 
 
 def backtest_options(asset_list, start_date, end_date, include_buy_sells=True):
     portfolio = State.Portfolio(initial_cash=10000, trading_fees=5.00)
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
-    date1_obj = date(date1[0], date1[1], date1[2])
+    date1_obj = datetime.date(date1[0], date1[1], date1[2])
     strategy = State.HoldingsStrategy(
         "Buying at weekly lows", asset_list, assets=State.Assets.Spreads)
-    strategy.set_buying_conditions(Conditions.IsLowForWeek(strategy))
+    strategy.set_buying_conditions(Conditions.IsLowForPeriod(strategy))
 
     state = State.BacktestingState(
         portfolio, strategy, date1_obj, State.Resolution.Daily,
@@ -158,7 +166,7 @@ if __name__ == "__main__":
     # clear_logs()
     base_dir = os.path.abspath('./logs')
     logging.basicConfig(
-        filename=f'{base_dir}/{datetime.now().strftime("%m-%d-%Y %H:%M:%S")}.log',
+        filename=f'{base_dir}/{datetime.datetime.now().strftime("%m-%d-%Y %H:%M:%S")}.log',
         format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
         datefmt='%Y-%m-%d:%H:%M:%S',
         level=logging.INFO)
