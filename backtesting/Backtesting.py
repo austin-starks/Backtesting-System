@@ -60,9 +60,14 @@ def check_backtest_preconditions(start_date, end_date, resolution, days):
 
 
 def backtest_buy(state, current_date, current_time, portfolio):
-    stock_strategy = state.get_strategy()
     if state.buying_conditions_are_met(current_date, current_time):
-        portfolio.buy(stock_strategy, current_date, current_time)
+        stocks_to_buy = state.get_stocks_to_buy()
+        abool = False
+        for stock in stocks_to_buy:
+            abool = abool or portfolio.buy(stock, state.get_strategy(),
+                                           current_date, current_time)
+        if abool:
+            state.acknowledge_buy(current_date, current_time)
 
 
 def backtest_sell(state, current_date, current_time, portfolio):
@@ -72,8 +77,12 @@ def backtest_sell(state, current_date, current_time, portfolio):
     else:
         is_profitable = True
     if is_profitable and state.selling_conditions_are_met(current_date, current_time, is_profitable):
-        portfolio.sell(
-            stock_strategy, current_date, current_time)
+        stocks_to_sell = state.get_stocks_to_sell()
+        for stock in stocks_to_sell:
+            abool = abool or portfolio.sell(stock, state.get_strategy(),
+                                            current_date, current_time)
+        if abool:
+            state.acknowledge_sell(current_date, current_time)
 
 
 def backtest_loop_helper(asset_list, current_date, current_time, state):
@@ -143,11 +152,11 @@ def backtest(asset_list, start_date, end_date, resolution, days, state, plot_buy
 
 
 def backtest_options(asset_list, start_date, end_date, include_buy_sells=True):
-    portfolio = State.Portfolio(initial_cash=10000, trading_fees=5.00)
+    portfolio = State.Portfolio(initial_cash=100000, trading_fees=5.00)
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
     date1_obj = datetime.date(date1[0], date1[1], date1[2])
     strategy = State.HoldingsStrategy(
-        "Buying at weekly lows", asset_list, assets=State.Assets.Spreads)
+        "Buying at weekly lows", asset_list, assets=State.Assets.Options)
     strategy.set_buying_conditions(Conditions.IsLowForPeriod(strategy))
 
     state = State.BacktestingState(
