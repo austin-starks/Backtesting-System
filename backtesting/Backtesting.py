@@ -13,6 +13,7 @@ import sys
 import pytz
 import holidays
 import Conditions
+from pathlib import Path
 
 
 def market_is_open(now):
@@ -63,10 +64,13 @@ def backtest_buy(state, current_date, current_time, portfolio):
     if state.buying_conditions_are_met(current_date, current_time):
         stocks_to_buy = state.get_stocks_to_buy()
         abool = False
+        # print(stocks_to_buy)
         for stock in stocks_to_buy:
             abool = abool or portfolio.buy(stock, state.get_strategy(),
                                            current_date, current_time)
+            # print(abool)
         if abool:
+            # print('bought')
             state.acknowledge_buy(current_date, current_time)
 
 
@@ -170,9 +174,10 @@ def backtest_options(asset_list, start_date, end_date, include_buy_sells=True):
 
 if __name__ == "__main__":
     # clear_logs()
-    base_dir = os.path.abspath('./logs')
+    path = os.path.dirname(Path(__file__).absolute())
+
     logging.basicConfig(
-        filename=f'{base_dir}/{datetime.datetime.now().strftime("%m-%d-%Y %H:%M:%S")}.log',
+        filename=f'{path}/logs/{datetime.datetime.now().strftime("%m-%d-%Y %H:%M:%S")}.log',
         format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
         datefmt='%Y-%m-%d:%H:%M:%S',
         level=logging.INFO)
