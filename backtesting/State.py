@@ -29,7 +29,7 @@ def load_stock_data(stock):
                              end=date.today().strftime("%m/%d/%Y"),
                              data_source='yahoo')
         df.to_csv(f"{path}/{stock}.csv")
-    return None
+    return df
 
 
 def load_crypto_data(crypto):
