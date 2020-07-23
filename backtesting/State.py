@@ -416,7 +416,7 @@ class Holdings(object):
             self._position_list[stock_name] = [num_assets, price]
             # print("else", self._position_list, [num_assets, price])
         if self._position_list[stock_name][0] == 0:
-            del self._position_list[num_assets]
+            del self._position_list[stock_name]
 
     def subtract_shares(self, stock_name, num_assets):
         """
@@ -437,7 +437,8 @@ class HoldingsStrategy(object):
     """
 
     def __init__(self, strategy_name, asset_list, buying_allocation=1, buying_allocation_type='percent_portfolio', maximum_allocation=1.0, option_type='C',
-                 minimum_allocation=0.0, buying_delay=1, selling_delay=0, selling_allocation=0.1, assets=Assets.Stocks, must_be_profitable_to_sell=False, strikes_above=0):
+                 minimum_allocation=0.0, buying_delay=1, selling_delay=0, selling_allocation=0.1, assets=Assets.Stocks, must_be_profitable_to_sell=False,
+                 strikes_above=0, start_with_spreads=True):
         self._strategy_name = strategy_name
         self._asset_info = dict()
         self._stock_list = asset_list
@@ -462,6 +463,7 @@ class HoldingsStrategy(object):
         self._must_be_profitable = must_be_profitable_to_sell
         self._strikes_above = strikes_above
         self._option_type = option_type
+        self._start_with_spreads = start_with_spreads
 
     def __str__(self):
         """
@@ -486,6 +488,12 @@ class HoldingsStrategy(object):
         Returns: the asset names
         """
         return self._stock_list
+
+    def start_with_spreads(self):
+        """
+        Returns: True if the options strategy starts with buying a spread. False otherwise.
+        """
+        return self._start_with_spreads
 
     def get_asset_info(self):
         """
@@ -873,7 +881,7 @@ class Portfolio(object):
             for position in positions:
                 count += Holdings.get_options_price(
                     position, cur_date, cur_time) * positions[position][0]
-        # print(stock_name, cur_date, count)
+        # print(stock_name, cur_date, count, max_allocation)
         return count * 100 < max_allocation
         # print('here1')
 
@@ -892,7 +900,6 @@ class Portfolio(object):
         # TODO Also, make all data saved to local database and attempt to fetch from there
         df = Holdings.get_options_data(symbol)
         if df is None:
-            print('df is None')
             return abool
         num_contracts = stock_strategy.get_buying_allocation()
         holdings_price = Holdings.get_options_price(symbol, cur_date, cur_time)
@@ -900,6 +907,7 @@ class Portfolio(object):
         buying_power = self.get_buying_power()
         if total_price < buying_power and total_price != 0.0:
             # print('here3')
+            abool = True
             self.decrease_buying_power(total_price)
             self.add_holdings(symbol, num_contracts, holdings_price,
                               Assets.Options, cur_date, df)
@@ -910,6 +918,52 @@ class Portfolio(object):
             else:
                 Helper.log_info(
                     f"\nSold (to open) {-1 * num_contracts} {symbol} (${last_price} stock price) contract(s) on {cur_date} at {cur_time} for ${holdings_price} per contract.\n{stock_strategy}\n---")
+        else:
+            abool = False
+            Helper.log_warn(
+                f"Insufficent buying power to buy {stock}\n{stock_strategy}\n---")
+        return abool
+
+    def buy_spreads(self, stock, stock_strategy, cur_date, cur_time):
+        """
+        Helper function for buy to purchase options as opposed to shares.
+        """
+        abool = False
+        last_price = stock_strategy.get_stock_price(stock, cur_date, cur_time)
+        symbol_list = [
+            Holdings.get_options_symbol(
+                stock, last_price, cur_date, stock_strategy.get_strikes_above(), stock_strategy.get_option_type()),
+            Holdings.get_options_symbol(
+                stock, last_price, cur_date, stock_strategy.get_strikes_above() + 1, stock_strategy.get_option_type())
+        ]
+        if not self.check_max_allocation(symbol_list[0], stock_strategy, cur_date, cur_time):
+            Helper.log_warn(
+                f"Portfolio currently has maximum allocation of {stock}")
+            return abool
+
+        # TODO Also, make all data saved to local database and attempt to fetch from there
+        df_list = [Holdings.get_options_data(
+            symbol_list[0]), Holdings.get_options_data(symbol_list[1])]
+        if df_list[0] is None or df_list[1] is None:
+            return abool
+        num_contracts = stock_strategy.get_buying_allocation()
+        holdings_price = Holdings.get_options_price(
+            symbol_list[0], cur_date, cur_time) * 100 * num_contracts
+        holdings_price2 = Holdings.get_options_price(
+            symbol_list[1], cur_date, cur_time) * 100 * num_contracts
+        total_price = holdings_price - holdings_price2
+        buying_power = self.get_buying_power()
+        if total_price < buying_power and total_price != 0.0:
+            abool = True
+            self.decrease_buying_power(total_price)
+            self.add_holdings(symbol_list[0], num_contracts, holdings_price / 100,
+                              Assets.Options, cur_date, df_list[0])
+            Helper.log_info(
+                f"\nBought (to open) {num_contracts} {symbol_list[0]} (${last_price} stock price) contract(s) on {cur_date} at {cur_time} for ${holdings_price/100} per contract.\n{stock_strategy}\n---")
+            self.add_holdings(symbol_list[1], -1 * num_contracts, holdings_price2 / 100,
+                              Assets.Options, cur_date, df_list[1])
+            Helper.log_info(
+                f"\nSold (to open) {-1 * num_contracts} {symbol_list[1]} (${last_price} stock price) contract(s) on {cur_date} at {cur_time} for ${holdings_price/100} per contract.\n{stock_strategy}\n---")
         else:
             abool = False
             Helper.log_warn(
@@ -927,8 +981,12 @@ class Portfolio(object):
         abool = False
         asset_type = stock_strategy.get_asset_type()
         if asset_type == Assets.Options:
-            abool = self.buy_options(
-                stock, stock_strategy, current_date, current_time)
+            if stock_strategy.start_with_spreads():
+                abool = self.buy_spreads(
+                    stock, stock_strategy, current_date, current_time)
+            else:
+                abool = self.buy_options(
+                    stock, stock_strategy, current_date, current_time)
             # print("buy after buy_options", abool)
         else:
             Helper.log_error("Not Implemented")

@@ -160,7 +160,7 @@ def backtest_options(asset_list, start_date, end_date, include_buy_sells=True):
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
     date1_obj = datetime.date(date1[0], date1[1], date1[2])
     strategy = State.HoldingsStrategy(
-        "Buying at weekly lows", asset_list, assets=State.Assets.Options, maximum_allocation=4000, buying_delay=7)
+        "Buying at weekly lows", asset_list, assets=State.Assets.Options, maximum_allocation=4000, buying_delay=7, start_with_spreads=True)
     strategy.set_buying_conditions(Conditions.IsLowForPeriod(strategy, sd=0.5))
 
     state = State.BacktestingState(
