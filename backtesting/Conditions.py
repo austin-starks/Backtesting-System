@@ -106,23 +106,13 @@ class IsLowForPeriod(TimePeriodCondition):
             try:
                 today = dataframe.loc[str(current_date)]
                 self.warm_up_data(key, today)
-                # print("warmed up")
                 current_price = round(
                     today.loc[str(current_time)], 2)
-                # print("current price", current_price)
-                # if current price < lowest price in dataframe, abool = True
-                # print('close', self._changing_week_data[key]['Close'])
                 lowest_price = self._changing_week_data[key]["Close"].min()
-                # print('lowest', lowest_price, type(lowest_price))
-                # print("lowest price", lowest_price)
-                # print("price + sd", current_price +
-                #       (self._standard_deviation * self._changing_week_data["Close"].std()))
-                # print("lowest price", lowest_price)
 
+                # print(current_date, current_price, key, lowest_price,
+                #       (self._standard_deviation * self._changing_week_data[key]["Close"].std()))
                 if current_price < lowest_price + (self._standard_deviation * self._changing_week_data[key]["Close"].std()):
-                    # print(current_price, lowest_price)
-                    # print(
-                    #     f"{key} is low enough to buy at {current_date} {current_time}")
                     abool = True
                     stocks_to_buy[key] = (
                         current_date, current_time, current_price)

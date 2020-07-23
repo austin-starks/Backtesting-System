@@ -156,16 +156,15 @@ def backtest(asset_list, start_date, end_date, resolution, days, state, plot_buy
 
 
 def backtest_options(asset_list, start_date, end_date, include_buy_sells=True):
-    portfolio = State.Portfolio(initial_cash=100000, trading_fees=5.00)
+    portfolio = State.Portfolio(initial_cash=10000, trading_fees=5.00)
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
     date1_obj = datetime.date(date1[0], date1[1], date1[2])
     strategy = State.HoldingsStrategy(
-        "Buying at weekly lows", asset_list, assets=State.Assets.Options)
-    strategy.set_buying_conditions(Conditions.IsLowForPeriod(strategy))
+        "Buying at weekly lows", asset_list, assets=State.Assets.Options, maximum_allocation=4000, buying_delay=7)
+    strategy.set_buying_conditions(Conditions.IsLowForPeriod(strategy, sd=0.5))
 
     state = State.BacktestingState(
         portfolio, strategy, date1_obj, State.Resolution.Daily,
-        allocation_hodl_dict_percent={'SPY': 1.0}
     )
     resolution = State.Resolution.Daily
     backtest(asset_list, start_date, end_date,
@@ -183,8 +182,8 @@ if __name__ == "__main__":
         level=logging.INFO)
     # backtest_stocks()
     # backtest_crypto()
-    backtest_options(asset_list=["CHGG"],
-                     start_date='2020-02-14', end_date='2020-03-14', include_buy_sells=False)
+    backtest_options(asset_list=["NVDA"],
+                     start_date='2020-05-20', end_date='2020-07-21', include_buy_sells=True)
     # backtest_options(asset_list=["QQQ"],
     #                  start_date='2020-06-01', end_date='2020-07-01', include_buy_sells=True)
     # backtest_options(asset_list=["NVDA", "SE", "DOCU", "AAPL", "SHOP", "TSLA"], start_date='2020-06-01', end_date='2020-07-01'):
