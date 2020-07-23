@@ -24,13 +24,17 @@ def market_is_open(now):
 
 def clear_logs():
     directory = 'logs'
-    filelist = [name for name in os.listdir(
-        directory) if os.path.isfile(os.path.join(directory, name))]
+    filelist = sorted([name for name in os.listdir(
+        directory) if os.path.isfile(os.path.join(directory, name))])
     len_list = len(filelist)
-    if len_list > 10:
-        for i in range(len_list - 5):
-            filename = os.path.join(directory, filelist[i])
-            os.remove(filename)
+    # print(filelist)
+    i = 0
+    for filename in filelist:
+        # print(filename)
+        os.remove(os.path.join(directory, filename))
+        i += 1
+        if i > len_list - 5:
+            break
 
 
 def check_backtest_preconditions(start_date, end_date, resolution, days):
@@ -134,14 +138,14 @@ def backtest(asset_list, start_date, end_date, resolution, days, state):
 
 
 def backtest_options(asset_list, start_date, end_date):
-    portfolio = State.Portfolio(initial_cash=5000, trading_fees=5.00)
+    portfolio = State.Portfolio(initial_cash=10000, trading_fees=5.00)
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
     date1_obj = datetime.date(date1[0], date1[1], date1[2])
     strategy = State.HoldingsStrategy(
-        "Buying at weekly lows", asset_list, assets=State.Assets.Options, buying_allocation=3, selling_allocation=1,
-        maximum_allocation_per_stock=0.4, start_with_spreads=True, buying_delay=7, selling_delay=1)
+        "Buying at weekly lows", asset_list, assets=State.Assets.Options, buying_allocation=4, selling_allocation=1,
+        maximum_allocation_per_stock=0.5, start_with_spreads=True, buying_delay=12, selling_delay=3)
     strategy.set_buying_conditions(
-        Conditions.IsLowForPeriod(portfolio, strategy, sd=0))
+        Conditions.IsLowForPeriod(portfolio, strategy))
     strategy.set_selling_conditions(
         Conditions.NegaEndIsUpNPercent(portfolio, strategy, target_percent_gain=0.75))
 
@@ -153,7 +157,7 @@ def backtest_options(asset_list, start_date, end_date):
 
 
 if __name__ == "__main__":
-    # clear_logs()
+    clear_logs()
     path = os.path.dirname(Path(__file__).absolute())
 
     logging.basicConfig(
@@ -161,10 +165,8 @@ if __name__ == "__main__":
         format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
         datefmt='%Y-%m-%d:%H:%M:%S',
         level=logging.INFO)
+
     # backtest_stocks()
     # backtest_crypto()
-    backtest_options(asset_list=["NVDA", "SPY"],
-                     start_date='2020-06-21', end_date='2020-07-22')
-    # backtest_options(asset_list=["QQQ"],
-    #                  start_date='2020-06-01', end_date='2020-07-01', include_buy_sells=True)
-    # backtest_options(asset_list=["NVDA", "SE", "DOCU", "AAPL", "SHOP", "TSLA"], start_date='2020-06-01', end_date='2020-07-01'):
+    backtest_options(asset_list=["NVDA"],
+                     start_date='2020-02-21', end_date='2020-07-22')
