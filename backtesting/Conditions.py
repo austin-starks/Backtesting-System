@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import date, datetime, timedelta
 import re
 import sys
+import State
 
 
 class Condition(ABC):
@@ -12,7 +13,8 @@ class Condition(ABC):
     This class is the parent class of all conditions. A condition is simply a predicate. The predicate determines whether a holding
     """
 
-    def __init__(self, strategy):
+    def __init__(self, portfolio, strategy):
+        self._portfolio = portfolio
         self._asset_info = strategy.get_asset_info()
 
     @abstractmethod
@@ -29,8 +31,8 @@ class TimePeriodCondition(Condition):
     within a time period.
     """
 
-    def __init__(self, strategy, sd=0, week_length=5):
-        super().__init__(strategy)
+    def __init__(self, portfolio, strategy, sd=0, week_length=5):
+        super().__init__(portfolio, strategy)
         self._standard_deviation = sd
         self._week_length = week_length
         self._changing_week_data = dict()
@@ -92,8 +94,8 @@ class IsLowForPeriod(TimePeriodCondition):
     deviations). False otherwise
     """
 
-    def __init__(self, strategy, sd=0, week_length=5):
-        super().__init__(strategy, sd, week_length)
+    def __init__(self, portfolio, strategy, sd=0, week_length=5):
+        super().__init__(portfolio, strategy, sd, week_length)
 
     def is_true(self, current_date, current_time):
         """
@@ -123,5 +125,45 @@ class IsLowForPeriod(TimePeriodCondition):
                 print("Exception", e)
         if abool:
             return abool, stocks_to_buy
+        else:
+            return abool, None
+
+
+class NegaEndIsUpNPercent(Condition):
+    """
+    Condition: Is True if the stock is low for the week (+/- n standard
+    deviations). False otherwise
+    """
+
+    def __init__(self, portfolio, strategy, target_percent_gain=0.6):
+        super().__init__(portfolio, strategy)
+        self._percent_gain = target_percent_gain
+
+    def is_true(self, current_date, current_time):
+        """
+        Helper function for is_true for handling stock data
+        """
+        holdings = self._portfolio.get_holdings()
+        abool = False
+        # print("HERE", holdings)
+        stocks_to_sell = dict()
+        for holding_key in holdings:
+            positions = holdings[holding_key].get_positions()
+            for position_key in positions:
+                position_info = positions[position_key]
+                # if it is a nega-end
+                if position_info[0] < 0:
+                    current_price = State.Holdings.get_options_price(position_key,
+                                                                     current_date, current_time)
+                    original_price = position_info[1]
+                    # print("current price", current_price,
+                    #       "original price", original_price)
+                    if (original_price - current_price) / original_price > self._percent_gain:
+                        abool = True
+                        stocks_to_sell[position_key] = (
+                            current_date, current_time, current_price)
+
+        if abool:
+            return abool, stocks_to_sell
         else:
             return abool, None

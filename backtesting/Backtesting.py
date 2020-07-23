@@ -82,6 +82,7 @@ def backtest_sell(state, current_date, current_time, portfolio):
         is_profitable = True
     if is_profitable and state.selling_conditions_are_met(current_date, current_time, is_profitable):
         stocks_to_sell = state.get_stocks_to_sell()
+        abool = False
         for stock in stocks_to_sell:
             abool = abool or portfolio.sell(stock, state.get_strategy(),
                                             current_date, current_time)
@@ -99,6 +100,7 @@ def backtest_loop(asset_list, state, resolution, date1_obj, epochs, current_time
     while current_epoch <= epochs:
         day_delta = current_epoch // resolution
         current_date = date1_obj + datetime.timedelta(days=day_delta)
+        # print("Backtest loop", current_date)
         if market_is_open(current_date):
             state.update_portfolio_value(current_date, current_time)
             backtest_loop_helper(asset_list, current_date, current_time, state)
@@ -107,7 +109,7 @@ def backtest_loop(asset_list, state, resolution, date1_obj, epochs, current_time
     return day_delta
 
 
-def backtest(asset_list, start_date, end_date, resolution, days, state, plot_buy_sell_points=False):
+def backtest(asset_list, start_date, end_date, resolution, days, state):
     Helper.log_info("Starting Backtest")
     check_backtest_preconditions(start_date, end_date, resolution, days)
     if days == 'All' or days == 'all':
@@ -123,52 +125,31 @@ def backtest(asset_list, start_date, end_date, resolution, days, state, plot_buy
     days_passed = backtest_loop(asset_list, state, resolution,
                                 date1_obj, epochs, current_time, current_epoch)
 
-    portfolio_history, buy_history, sell_history = state.get_portfolio_history()
-    ax = portfolio_history.plot()
-    if plot_buy_sell_points:
-        plt.rcParams.update({'font.size': 8})
-        int_i = 0
-        for buy in buy_history:
-            x = (buy[0] - date1_obj).days * resolution
-            y = 0.9 * state.get_portfolio().get_portfolio_value(
-                date1_obj + datetime.timedelta(days=days_passed), current_time) - 500 * int_i
-            y = 0.95**int_i * y
-            plt.axvline(x=x, color='red', linestyle='dashed')
-            ax.text(x=x, y=y, s=f'b {buy[1]}')
-            int_i += 1
-            if int_i >= 4:
-                int_i = 0
-        int_i = 0
-        for sell in sell_history:
-            x = (sell[0] - date1_obj).days * resolution
-            y = 0.9 * state.get_portfolio().get_portfolio_value(
-                date1_obj + datetime.timedelta(days=days_passed), current_time) - 500 * int_i
-            y = 0.5**int_i * y
-            plt.axvline(x=x, color='blue', linestyle='dashed')
-            ax.text(x=x, y=y, s=f's {sell[1]}')
-            int_i += 1
-            if int_i >= 4:
-                int_i = 0
+    portfolio_history = state.get_portfolio_history()[0]
+    portfolio_history.plot()
     plt.show()
     Helper.log_info("Backtest complete")
     Helper.log_info(state.get_portfolio_snapshot(
         date1_obj + datetime.timedelta(days=days_passed), current_time))
 
 
-def backtest_options(asset_list, start_date, end_date, include_buy_sells=True):
-    portfolio = State.Portfolio(initial_cash=10000, trading_fees=5.00)
+def backtest_options(asset_list, start_date, end_date):
+    portfolio = State.Portfolio(initial_cash=5000, trading_fees=5.00)
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
     date1_obj = datetime.date(date1[0], date1[1], date1[2])
     strategy = State.HoldingsStrategy(
-        "Buying at weekly lows", asset_list, assets=State.Assets.Options, maximum_allocation=4000, buying_delay=7, start_with_spreads=True)
-    strategy.set_buying_conditions(Conditions.IsLowForPeriod(strategy, sd=0.5))
+        "Buying at weekly lows", asset_list, assets=State.Assets.Options, buying_allocation=3, selling_allocation=1,
+        maximum_allocation_per_stock=0.4, start_with_spreads=True, buying_delay=7, selling_delay=1)
+    strategy.set_buying_conditions(
+        Conditions.IsLowForPeriod(portfolio, strategy, sd=0))
+    strategy.set_selling_conditions(
+        Conditions.NegaEndIsUpNPercent(portfolio, strategy, target_percent_gain=0.75))
 
     state = State.BacktestingState(
-        portfolio, strategy, date1_obj, State.Resolution.Daily,
-    )
+        portfolio, strategy, date1_obj, State.Resolution.Daily)
     resolution = State.Resolution.Daily
     backtest(asset_list, start_date, end_date,
-             resolution, 'all', state, include_buy_sells)
+             resolution, 'all', state)
 
 
 if __name__ == "__main__":
@@ -182,8 +163,8 @@ if __name__ == "__main__":
         level=logging.INFO)
     # backtest_stocks()
     # backtest_crypto()
-    backtest_options(asset_list=["NVDA"],
-                     start_date='2020-05-20', end_date='2020-07-21', include_buy_sells=True)
+    backtest_options(asset_list=["NVDA", "SPY"],
+                     start_date='2020-06-21', end_date='2020-07-22')
     # backtest_options(asset_list=["QQQ"],
     #                  start_date='2020-06-01', end_date='2020-07-01', include_buy_sells=True)
     # backtest_options(asset_list=["NVDA", "SE", "DOCU", "AAPL", "SHOP", "TSLA"], start_date='2020-06-01', end_date='2020-07-01'):
