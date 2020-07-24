@@ -138,14 +138,14 @@ def backtest(asset_list, start_date, end_date, resolution, days, state):
 
 
 def backtest_options(asset_list, start_date, end_date):
-    portfolio = State.Portfolio(initial_cash=10000, trading_fees=5.00)
+    portfolio = State.Portfolio(initial_cash=5000, trading_fees=5.00)
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
     date1_obj = datetime.date(date1[0], date1[1], date1[2])
     strategy = State.HoldingsStrategy(
-        "Buying at weekly lows", asset_list, assets=State.Assets.Options, buying_allocation=4, selling_allocation=1,
-        maximum_allocation_per_stock=0.5, start_with_spreads=True, buying_delay=12, selling_delay=3)
+        "Buying at weekly lows", asset_list, assets=State.Assets.Options, buying_allocation=3, selling_allocation=1,
+        maximum_allocation_per_stock=0.125, start_with_spreads=True, buying_delay=5, selling_delay=2, strikes_above=1)
     strategy.set_buying_conditions(
-        Conditions.IsLowForPeriod(portfolio, strategy))
+        Conditions.IsLowForPeriod(portfolio, strategy, sd=0, week_length=7))
     strategy.set_selling_conditions(
         Conditions.NegaEndIsUpNPercent(portfolio, strategy, target_percent_gain=0.75))
 
@@ -168,5 +168,5 @@ if __name__ == "__main__":
 
     # backtest_stocks()
     # backtest_crypto()
-    backtest_options(asset_list=["NVDA"],
-                     start_date='2020-02-21', end_date='2020-07-22')
+    backtest_options(asset_list=["NVDA", "TSLA", "SHOP"],
+                     start_date='2019-01-22', end_date='2020-07-22')

@@ -231,6 +231,7 @@ class Holdings(object):
     of asset, and how much the person owns
     """
     options_prices = {}
+    failed_options_prices = {}
 
     def __init__(self, holding_name, num_shares, initial_price, options_df=None, type_asset=Assets.Stocks,
                  initial_purchase_date=None):
@@ -290,6 +291,8 @@ class Holdings(object):
         at a strike price just above strikes above.
         """
         # print(symbol, Holdings.options_prices.keys())
+        if symbol in Holdings.failed_options_prices:
+            return None
         if symbol in Holdings.options_prices and Holdings.options_prices[symbol] is not None:
             # print('shortcut', symbol)
             # print("price df", Holdings.options_prices)
@@ -322,7 +325,10 @@ class Holdings(object):
                 # print(Holdings.options_prices)
                 return df
             except Exception as e:
-                print("Exception", e)
+                Helper.log_warn(f"Exception: {e}")
+                Holdings.failed_options_prices[symbol] = True
+                # Helper.log_warn(trade_data_response)
+                # Helper.log_warn(trade_data_json)
                 return None
 
     @staticmethod
@@ -379,7 +385,7 @@ class Holdings(object):
                     answer = round(answer, 2)
                     Helper.log_warn(
                         f"Options price not found; estimating options price for {options_name} at ${answer} on {current_date}")
-                    Helper.log_warn(df)
+                    # Helper.log_warn(df)
                     Helper.log_warn(f"Date not found: {current_date}")
                     return answer
 
@@ -416,10 +422,13 @@ class Holdings(object):
         if stock_name in self._position_list:
             # print('if')
             position_info = self._position_list[stock_name]
+            positions_before_adding = position_info[0]
             # print("position info", position_info)
-            position_info[1] = (position_info[1] + price *
-                                num_assets) / (position_info[0] + num_assets)
             position_info[0] += num_assets
+            if position_info[0] != 0:
+                position_info[1] = (position_info[1] + price *
+                                    num_assets) / (positions_before_adding + num_assets)
+
             Holdings.options_prices[stock_name] = dataframe
         else:
             # print('else1')
@@ -572,58 +581,7 @@ class HoldingsStrategy(object):
         Returns: the current price of the stock at this date and time
         """
         df = load_stock_data(stock)
-        if not 'Symbol' in df:
-            i = 0
-            while True:
-                delta = timedelta(days=i)
-                try:
-                    # print("date and delta", str(current_date + delta))
-                    return round(df.loc[str(current_date + delta)].loc[str(time)], 2)
-                except KeyError:
-                    expiration_match = re.match(
-                        r"(\d{4})-(\d{2})-(\d{2})", str(df.iloc[-1].name))
-                    expiration = datetime(int(expiration_match.group(1)),
-                                          int(expiration_match.group(2)), int(expiration_match.group(3)))
-                    # print(df.tail())
-                    # print(date)
-                    # print(time)
-                    if expiration.date() < current_date:
-                        return round(df.loc[str(expiration.date())].loc[str(time)], 2)
-                    i -= 1
-                    if i < -5:
-                        j = 0
-                        iloc = df.iloc[j]
-                        date_arr = [int(x)
-                                    for x in re.split(r'[\-]', iloc.name)]
-                        date_obj = date(date_arr[0], date_arr[1], date_arr[2])
-
-                        while current_date > date_obj:
-                            j += 1
-                            iloc = df.iloc[j]
-                            date_arr = [int(x)
-                                        for x in re.split(r'[\-]', iloc.name)]
-                            date_obj = date(
-                                date_arr[0], date_arr[1], date_arr[2])
-                        iloc2 = df.iloc[j - 1]
-                        date_arr2 = [int(x)
-                                     for x in re.split(r'[\-]', iloc2.name)]
-                        date_obj2 = date(
-                            date_arr2[0], date_arr2[1], date_arr2[2])
-                        # print("date obj", date_obj)
-                        # print("date obj2", date_obj2)
-                        if j == 0:
-                            answer = (df.loc[str(date_obj)].loc[str(time)])
-                        else:
-                            answer = (df.loc[str(date_obj)].loc[str(
-                                time)] + df.loc[str(date_obj2)].loc[str(time)]) / 2
-                        answer = round(answer, 2)
-                        Helper.log_warn(
-                            f"Options price not found; estimating options price for {stock} at ${answer} on {current_date}")
-                        Helper.log_warn(df)
-                        Helper.log_warn(f"Date not found: {current_date}")
-                        return answer
-        else:
-            return df.loc[str(date) + " " + str(time)].loc['Open']
+        return round(df.loc[str(current_date)].loc[str(time)], 2)
 
     def buying_conditions_are_met(self, date, time):
         """
