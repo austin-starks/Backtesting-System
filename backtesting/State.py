@@ -62,7 +62,7 @@ class BacktestingState(object):
 
     def __init__(self, asset_list, portfolio, current_date, resolution):
         self._portfolio = portfolio
-        self._strategies = []
+        self._strategies = {}
         self._portfolio_history = pd.DataFrame(
             columns=["Strategy Value", "HODL Value"])
         self._history_length = 0
@@ -122,28 +122,6 @@ class BacktestingState(object):
         """
         return self._portfolio_history, self._buy_history, self._sell_history
 
-
-<< << << < HEAD
-    def set_compare_function(self):
-        """
-        Sets a hodl strategy to compare against a stock strategy/
-        """
-        current_date, current_time = self._initial_datetime
-        if self._allocation_dict == None:
-            self._allocation_data = dict()
-            for strategy in self._strategy_list:
-                name = strategy.get_asset_name()
-                if name in self._hodl_comparison_dict:
-                    continue
-                price = strategy.get_stock_price(current_date, current_time)
-                self._hodl_comparison_dict[name] = self._portfolio.get_initial_value(
-                ) / price
-                df = strategy.get_dataframe()
-                self._allocation_data[name] = df
-            len_holdings = len(self._hodl_comparison_dict)
-            for holding in self._hodl_comparison_dict:
-                self._hodl_comparison_dict[holding] = self._hodl_comparison_dict[holding] / len_holdings
-== == == =
     def get_strategies(self):
         """
         Returns: the stategy for this state
@@ -156,7 +134,6 @@ class BacktestingState(object):
         """
         if self._last_purchase and self._last_purchase[0] + timedelta(self._strategies.get_buying_delay()) > current_date:
             return False
->>>>>> > complete_refactor
 
         conditions_are_met = self._strategies.buying_conditions_are_met(
             current_date, current_time)
@@ -181,9 +158,9 @@ class BacktestingState(object):
             return False
 
         conditions_are_met = self._strategies.selling_conditions_are_met(
-            current_date, current_time) and is_profitable
+            current_date, current_time)
 
-        if not conditions_are_met[0]:
+        if not conditions_are_met[0] and is_profitable:
             return False
         self._stocks_to_sell = set(conditions_are_met[1].keys())
         return True
