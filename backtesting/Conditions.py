@@ -88,6 +88,47 @@ class TimePeriodCondition(Condition):
             assert False
 
 
+class IsHighForPeriod(TimePeriodCondition):
+    """
+    Condition: Is True if the stock is low for the week (+/- n standard
+    deviations). False otherwise
+    """
+
+    def __init__(self, portfolio, strategy, sd=0, week_length=5):
+        super().__init__(portfolio, strategy, sd, week_length)
+
+    def is_true(self, current_date, current_time):
+        """
+        Helper function for is_true for handling stock data
+        """
+        stocks_to_buy = dict()
+        for key in self._asset_info:
+            dataframe = self._asset_info[key]
+            abool = False
+            try:
+                today = dataframe.loc[str(current_date)]
+                self.warm_up_data(key, today)
+                current_price = round(
+                    today.loc[str(current_time)], 2)
+                highest_price = self._changing_week_data[key]["Close"].max()
+
+                # print(current_date, current_price, key, highest_price,
+                #       (self._standard_deviation * self._changing_week_data[key]["Close"].std()))
+                if current_price > highest_price + (self._standard_deviation * self._changing_week_data[key]["Close"].std()):
+                    abool = True
+                    stocks_to_buy[key] = (
+                        current_date, current_time, current_price)
+                if current_time.is_eod():
+                    # print("Is eod")
+                    self.add_datapoint(key, today)
+            except KeyError as e:
+                print("Exception", e)
+        if abool:
+            return abool, stocks_to_buy
+        else:
+            return abool, None
+
+
 class IsLowForPeriod(TimePeriodCondition):
     """
     Condition: Is True if the stock is low for the week (+/- n standard
