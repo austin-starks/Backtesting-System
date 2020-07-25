@@ -90,7 +90,6 @@ class BacktestingState(object):
         """
         self._last_purchase = (date, time)
         self._stocks_to_buy = set()
-        self._stocks_to_sell = set()
 
     def acknowledge_sell(self, date, time):
         """
