@@ -70,8 +70,6 @@ class BacktestingState(object):
         self._initial_datetime = current_date, current_time
         self._buy_history = []
         self._sell_history = []
-        self._last_purchase = None
-        self._last_sale = None
         self._stocks_to_buy = set()
         self._stocks_to_sell = set()
         self._start_date = current_date
@@ -84,25 +82,25 @@ class BacktestingState(object):
             num_shares = initial_value / price / len_list
             self._hodl_comparison[asset] = num_shares
 
-    def acknowledge_buy(self, date, time):
+    def acknowledge_buy(self, strategy, date, time):
         """
         Sets last purchase to be a tuple of the last time this stock strategy bought an asset
         """
-        self._last_purchase = (date, time)
-        self._stocks_to_buy = set()
+        self._strategies[strategy]["last_purchase"] = (date, time)
+        self._strategies[strategy]["stocks_to_buy"] = set()
 
-    def acknowledge_sell(self, date, time):
+    def acknowledge_sell(self, strategy, date, time):
         """
         Sets last sell to be a tuple of the last time this stock strategy sold an asset
         """
-        self._last_sale = (date, time)
-        self._stocks_to_sell = set()
+        self._strategies[strategy]["last_sale"] = (date, time)
+        self._strategies[strategy]["stocks_to_sell"] = set()
 
-    def get_stocks_to_buy(self):
+    def get_stocks_to_buy(self, strategy):
         """
         Returns: the stocks that should be bought
         """
-        return self._stocks_to_buy
+        return self._strategies[strategy]["stocks_to_buy"]
 
     def get_start_date(self):
         """
@@ -110,11 +108,11 @@ class BacktestingState(object):
         """
         return self._start_date
 
-    def get_stocks_to_sell(self):
+    def get_stocks_to_sell(self, strategy):
         """
         Returns: the stocks that should be sold
         """
-        return self._stocks_to_sell
+        return self._strategies[strategy]["stocks_to_sell"]
 
     def get_portfolio_history(self):
         """
@@ -128,41 +126,45 @@ class BacktestingState(object):
         """
         return self._strategies
 
-    def buying_conditions_are_met(self, current_date, current_time):
+    def buying_conditions_are_met(self, strategy, current_date, current_time):
         """
         Returns: True if buying conditions are met. False otherwise
         """
-        if self._last_purchase and self._last_purchase[0] + timedelta(self._strategies.get_buying_delay()) > current_date:
+        if self._strategies[strategy]["last_purchase"] and self._strategies[strategy]["last_purchase"][0] + \
+           timedelta(strategy.get_buying_delay()) > current_date:
             return False
 
-        conditions_are_met = self._strategies.buying_conditions_are_met(
+        conditions_are_met = strategy.buying_conditions_are_met(
             current_date, current_time)
-
         if not conditions_are_met[0]:
             return False
-        self._stocks_to_buy = set(conditions_are_met[1].keys())
+        self._strategies[strategy]["stocks_to_buy"] = set(
+            conditions_are_met[1].keys())
 
         return True
 
-    def selling_conditions_are_met(self, stock_strategy, current_date, current_time):
+    def selling_conditions_are_met(self, strategy, current_date, current_time):
         """
         Returns: True if selling conditions are met. False otherwise
         """
-        if stock_strategy.must_be_profitable():
+        if strategy.must_be_profitable():
             is_profitable = self._portfolio.is_profitable(
                 current_date, current_time)
         else:
             is_profitable = True
-        if self._last_sale and self._last_sale[0] + timedelta(self._strategies.get_selling_delay()) > current_date:
+        if self._strategies[strategy]["last_sale"] and self._strategies[strategy]["last_sale"][0] + \
+           timedelta(strategy.get_selling_delay()) > current_date:
+
             # print("Buying delay")
             return False
 
-        conditions_are_met = self._strategies.selling_conditions_are_met(
+        conditions_are_met = strategy.selling_conditions_are_met(
             current_date, current_time)
 
         if not conditions_are_met[0] and is_profitable:
             return False
-        self._stocks_to_sell = set(conditions_are_met[1].keys())
+        self._strategies[strategy]["stocks_to_sell"] = set(
+            conditions_are_met[1].keys())
         return True
 
     def get_portfolio(self):
@@ -191,7 +193,8 @@ class BacktestingState(object):
         """
         Adds a strategy to the state
         """
-        self._strategies = (strategy)
+        self._strategies[strategy] = {
+            "last_sale": None, "last_purchase": None, "stocks_to_buy": set(), "stocks_to_sell": set()}
 
     def update_portfolio_value(self, cur_date, cur_time):
         """
@@ -267,8 +270,8 @@ class Holdings(object):
             self._underlying_name = holding_name
             # self._expiration = None
         self._position_list = dict()
-        self._position_list[holding_name] = [num_shares, initial_price]
-        self._initial_purchase_date = initial_purchase_date
+        self._position_list[holding_name] = [
+            num_shares, initial_price, str(initial_purchase_date)]
         # print(holding_name, num_shares, options_df, type_asset)
         # print("options df init", options_df)
         Holdings.options_prices[holding_name] = options_df
@@ -280,7 +283,7 @@ class Holdings(object):
         return self._underlying_name == other._underlying_name
 
     def __str__(self):
-        return f"({self._underlying_name} | Positions: {str(self.get_positions())} | Initial Purchase: {str(self._initial_purchase_date)})"
+        return f"({self._underlying_name} | Positions: {str(self.get_positions())})"
 
     def __repr__(self):
         return self.__str__()
@@ -433,7 +436,7 @@ class Holdings(object):
         """
         return self._position_list
 
-    def add_shares(self, stock_name, num_assets, dataframe, price):
+    def add_shares(self, stock_name, num_assets, dataframe, price, initial_purchase_date):
         """
         Adds additional shares to holdings
         """
@@ -452,7 +455,8 @@ class Holdings(object):
             Holdings.options_prices[stock_name] = dataframe
         else:
             # print('else1')
-            self._position_list[stock_name] = [num_assets, price]
+            self._position_list[stock_name] = [
+                num_assets, price, str(initial_purchase_date)]
             # print("else", self._position_list, [num_assets, price])
         if self._position_list[stock_name][0] == 0:
             del self._position_list[stock_name]
@@ -499,7 +503,6 @@ class HoldingsStrategy(object):
         self._selling_allocation_for_stock = selling_allocation
         self._buying_delay = buying_delay
         self._selling_delay = selling_delay
-        self._last_price = None
         self._must_be_profitable = must_be_profitable_to_sell
         self._strikes_above = strikes_above
         self._option_type = option_type
@@ -776,7 +779,8 @@ class Portfolio(object):
         name = new_holding.get_underlying_name()
         if name in self._current_holdings:
             holding = self._current_holdings[name]
-            holding.add_shares(stock, num_shares, options_dateframe, price)
+            holding.add_shares(stock, num_shares,
+                               options_dateframe, price, initial_purchase_date)
             if holding.is_empty():
                 del self._current_holdings[name]
         else:
@@ -861,8 +865,9 @@ class Portfolio(object):
             first_friday = first_day_of_month + \
                 timedelta(
                     days=((4 - calendar.monthrange(now.year, now.month)[0]) + 7) % 7)
+            answer = (first_friday + timedelta(days=14)).date()
             # 4 is friday of week
-            return (first_friday + timedelta(days=14)).date()
+            return answer
         elif options_length == OptionLength.Weekly:
             while date.weekday() != 4:
                 date = date + timedelta(1)

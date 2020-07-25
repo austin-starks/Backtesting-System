@@ -65,29 +65,32 @@ def check_backtest_preconditions(start_date, end_date, resolution, days):
 
 
 def backtest_buy(state, current_date, current_time, portfolio):
-    if state.buying_conditions_are_met(current_date, current_time):
-        stocks_to_buy = state.get_stocks_to_buy()
-        abool = False
-        # print(stocks_to_buy)
-        for stock in stocks_to_buy:
-            abool = abool or portfolio.buy(stock, state.get_strategies(),
-                                           current_date, current_time)
-            # print(abool)
-        if abool:
-            # print('bought')
-            state.acknowledge_buy(current_date, current_time)
+    strategies = state.get_strategies()
+    for strategy in strategies:
+        if state.buying_conditions_are_met(strategy, current_date, current_time):
+            stocks_to_buy = state.get_stocks_to_buy(strategy)
+            abool = False
+            # print(stocks_to_buy)
+            for stock in stocks_to_buy:
+                abool = abool or portfolio.buy(stock, strategy,
+                                               current_date, current_time)
+                # print(abool)
+            if abool:
+                # print('bought')
+                state.acknowledge_buy(strategy, current_date, current_time)
 
 
 def backtest_sell(state, current_date, current_time, portfolio):
-    stock_strategy = state.get_strategies()
-    if state.selling_conditions_are_met(stock_strategy, current_date, current_time):
-        stocks_to_sell = state.get_stocks_to_sell()
-        abool = False
-        for stock in stocks_to_sell:
-            abool = abool or portfolio.sell(stock, stock_strategy,
-                                            current_date, current_time)
-        if abool:
-            state.acknowledge_sell(current_date, current_time)
+    strategies = state.get_strategies()
+    for strategy in strategies:
+        if state.selling_conditions_are_met(strategy, current_date, current_time):
+            stocks_to_sell = state.get_stocks_to_sell(strategy)
+            abool = False
+            for stock in stocks_to_sell:
+                abool = abool or portfolio.sell(stock, strategy,
+                                                current_date, current_time)
+            if abool:
+                state.acknowledge_sell(strategy, current_date, current_time)
 
 
 def backtest_loop_helper(asset_list, current_date, current_time, state):
