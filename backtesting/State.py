@@ -60,9 +60,9 @@ class BacktestingState(object):
     a backtest
     """
 
-    def __init__(self, portfolio, strategy, current_date, resolution):
+    def __init__(self, asset_list, portfolio, current_date, resolution):
         self._portfolio = portfolio
-        self._strategy = strategy
+        self._strategies = []
         self._portfolio_history = pd.DataFrame(
             columns=["Strategy Value", "HODL Value"])
         self._history_length = 0
@@ -75,13 +75,12 @@ class BacktestingState(object):
         self._stocks_to_buy = set()
         self._stocks_to_sell = set()
         self._start_date = current_date
-        asset_list = self._strategy.get_asset_names()
         initial_value = self._portfolio.get_initial_value()
         len_list = len(asset_list)
         self._hodl_comparison = {}
         for asset in asset_list:
-            price = self._strategy.get_stock_price(asset,
-                                                   current_date, Resolution.time_init(resolution))
+            price = HoldingsStrategy.get_stock_price(asset,
+                                                     current_date, Resolution.time_init(resolution))
             num_shares = initial_value / price / len_list
             self._hodl_comparison[asset] = num_shares
 
@@ -124,20 +123,20 @@ class BacktestingState(object):
         """
         return self._portfolio_history, self._buy_history, self._sell_history
 
-    def get_strategy(self):
+    def get_strategies(self):
         """
         Returns: the stategy for this state
         """
-        return self._strategy
+        return self._strategies
 
     def buying_conditions_are_met(self, current_date, current_time):
         """
         Returns: True if buying conditions are met. False otherwise
         """
-        if self._last_purchase and self._last_purchase[0] + timedelta(self._strategy.get_buying_delay()) > current_date:
+        if self._last_purchase and self._last_purchase[0] + timedelta(self._strategies.get_buying_delay()) > current_date:
             return False
 
-        conditions_are_met = self._strategy.buying_conditions_are_met(
+        conditions_are_met = self._strategies.buying_conditions_are_met(
             current_date, current_time)
 
         if not conditions_are_met[0]:
@@ -150,11 +149,11 @@ class BacktestingState(object):
         """
         Returns: True if selling conditions are met. False otherwise
         """
-        if self._last_sale and self._last_sale[0] + timedelta(self._strategy.get_selling_delay()) > current_date:
+        if self._last_sale and self._last_sale[0] + timedelta(self._strategies.get_selling_delay()) > current_date:
             # print("Buying delay")
             return False
 
-        conditions_are_met = self._strategy.selling_conditions_are_met(
+        conditions_are_met = self._strategies.selling_conditions_are_met(
             current_date, current_time, is_profitable)
 
         if not conditions_are_met[0]:
@@ -184,6 +183,12 @@ class BacktestingState(object):
             f"Percent Change from Start: {percent_change['Strategy Value']}%\n" +\
             f"Percent Change for HODL: {percent_change['HODL Value']}%"
 
+    def add_strategy(self, strategy):
+        """
+        Adds a strategy to the state
+        """
+        self._strategies = (strategy)
+
     def update_portfolio_value(self, cur_date, cur_time):
         """
         Adds the portfolio value (and HODL value)
@@ -193,8 +198,8 @@ class BacktestingState(object):
         strat_value = self._portfolio.get_portfolio_value(cur_date, cur_time)
         hodl_value = 0
         for stock in self._hodl_comparison:
-            hodl_value += self._strategy.get_stock_price(stock,
-                                                         cur_date, cur_time) * self._hodl_comparison[stock]
+            hodl_value += HoldingsStrategy.get_stock_price(stock,
+                                                           cur_date, cur_time) * self._hodl_comparison[stock]
         self._portfolio_history.loc[self._history_length] = [
             strat_value, hodl_value]
         self._history_length += 1
@@ -234,9 +239,6 @@ class BacktestingState(object):
         #     if holding_tup[0] in self._hodl_comparison_dict:
         #         self._hodl_comparison_dict[holding_tup[0]
         #                                    ] = self._hodl_comparison_dict[holding_tup[0]] * percent_change
-
-    def calculate_HODL(self):
-        return 0
 
 
 class Holdings(object):
@@ -468,19 +470,20 @@ class HoldingsStrategy(object):
     includes the buying/selling conditions for the stock, and how many days
     between deploying the strategy can it be deployed again
     """
+    stock_info = {}
 
-    def __init__(self, asset_list, buying_allocation=1, buying_allocation_type='percent_portfolio', maximum_allocation_per_stock=100000000, option_type='C',
+    def __init__(self, strategy_name, asset_list, buying_allocation=1, buying_allocation_type='percent_portfolio', maximum_allocation_per_stock=100000000, option_type='C',
                  minimum_allocation=0.0, buying_delay=1, selling_delay=0, selling_allocation=0.1, assets=Assets.Stocks, must_be_profitable_to_sell=False,
                  strikes_above=0, expiration_length=OptionLength.Monthly, start_with_spreads=True):
-        self._asset_info = dict()
+        self._strategy_name = strategy_name
         self._stock_list = asset_list
         self._assets = assets
         self._expiration_length = expiration_length
         for stock in asset_list:
             if assets != 'crypto':
-                self._asset_info[stock] = load_stock_data(stock)
+                HoldingsStrategy.stock_info[stock] = load_stock_data(stock)
             else:
-                self._asset_info[stock] = load_crypto_data(stock)
+                HoldingsStrategy.stock_info[stock] = load_crypto_data(stock)
         self._buying_conditions = []
         self._selling_conditions = []
         self._stocks_to_buy = []
@@ -502,13 +505,13 @@ class HoldingsStrategy(object):
         """
         The string representation of this strategy
         """
-        return f"Strategy for {self._stock_list}"
+        return f"Strategy '{self._strategy_name}' for {self._stock_list}"
 
     def __repr__(self):
         """
         The repr representation of this strategy
         """
-        return f"Strategy for {self._stock_list}"
+        return f"Strategy '{self._strategy_name}' for {self._stock_list}"
 
     def must_be_profitable(self):
         """
@@ -546,12 +549,6 @@ class HoldingsStrategy(object):
         """
         return self._start_with_spreads
 
-    def get_asset_info(self):
-        """
-        Returns: The dataframes for stocks in this stock strategy
-        """
-        return self._asset_info
-
     def get_option_type(self):
         """
         Returns: the option type
@@ -588,23 +585,20 @@ class HoldingsStrategy(object):
         """
         return self._strikes_above
 
-    def get_stock_price(self, stock, current_date, time):
+    @staticmethod
+    def get_stock_price(stock, current_date, time):
         """
         Returns: the current price of the stock at this date and time
         """
-        df = self._asset_info[stock]
+        if stock in HoldingsStrategy.stock_info:
+            df = HoldingsStrategy.stock_info[stock]
+        else:
+            df = load_stock_data(stock)
+            HoldingsStrategy.stock_info[stock] = df
         try:
             return round(df.loc[str(current_date)].loc[str(time)], 2)
         except KeyError:
             return round(df.loc[str(current_date - timedelta(1))].loc[str(time)], 2)
-
-    @staticmethod
-    def get_stock_price_static(stock, current_date, time):
-        """
-        Returns: the current price of the stock at this date and time
-        """
-        df = load_stock_data(stock)
-        return round(df.loc[str(current_date)].loc[str(time)], 2)
 
     def buying_conditions_are_met(self, date, time):
         """
@@ -902,7 +896,8 @@ class Portfolio(object):
         Helper function for buy to purchase options as opposed to shares.
         """
         abool = False
-        last_price = stock_strategy.get_stock_price(stock, cur_date, cur_time)
+        last_price = HoldingsStrategy.get_stock_price(
+            stock, cur_date, cur_time)
         symbol = Holdings.get_options_symbol(
             stock, last_price, cur_date, stock_strategy.get_strikes_above(), stock_strategy.get_option_type(), stock_strategy.expiration_length())
         if not self.check_max_allocation(symbol, stock_strategy, cur_date, cur_time):
@@ -943,7 +938,8 @@ class Portfolio(object):
         Helper function for buy to purchase options as opposed to shares.
         """
         abool = False
-        last_price = stock_strategy.get_stock_price(stock, cur_date, cur_time)
+        last_price = HoldingsStrategy.get_stock_price(
+            stock, cur_date, cur_time)
         symbol_list = [
             Holdings.get_options_symbol(
                 stock, last_price, cur_date, stock_strategy.get_strikes_above(), stock_strategy.get_option_type(), stock_strategy.expiration_length()),
@@ -1016,7 +1012,7 @@ class Portfolio(object):
         abool = False
         if asset_type == Assets.Options:
             return self.sell_option(stock, date, time, stock_strategy)
-        last_price = stock_strategy.get_stock_price(stock, date, time)
+        last_price = HoldingsStrategy.get_stock_price(stock, date, time)
         current_value_holdings = self.get_current_allocation(
             stock, last_price, date, time)
         selling_allocation = stock_strategy.get_selling_allocation()
@@ -1069,11 +1065,11 @@ class Portfolio(object):
         self.subtract_holdings(option_name, num_contracts * price_multiplier)
         if total_price > 0:
             Helper.log_info(
-                f"\nSold (to close) {num_contracts} {option_name} (${strategy.get_stock_price(stock_name, current_date, current_time)} stock price) contract(s) on {current_date}" +
+                f"\nSold (to close) {num_contracts} {option_name} (${HoldingsStrategy.get_stock_price(stock_name, current_date, current_time)} stock price) contract(s) on {current_date}" +
                 f" at {current_time} for ${last_price} per contract.\n{strategy}\n---")
         else:
             Helper.log_info(
-                f"\nBought (to close) {num_contracts} {option_name}  (${strategy.get_stock_price(stock_name, current_date, current_time)} stock price) contract(s) on {current_date} " +
+                f"\nBought (to close) {num_contracts} {option_name}  (${HoldingsStrategy.get_stock_price(stock_name, current_date, current_time)} stock price) contract(s) on {current_date} " +
                 f"at {current_time} for ${last_price} per contract.\n{strategy}\n---")
         return abool
 

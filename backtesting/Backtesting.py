@@ -70,7 +70,7 @@ def backtest_buy(state, current_date, current_time, portfolio):
         abool = False
         # print(stocks_to_buy)
         for stock in stocks_to_buy:
-            abool = abool or portfolio.buy(stock, state.get_strategy(),
+            abool = abool or portfolio.buy(stock, state.get_strategies(),
                                            current_date, current_time)
             # print(abool)
         if abool:
@@ -79,7 +79,7 @@ def backtest_buy(state, current_date, current_time, portfolio):
 
 
 def backtest_sell(state, current_date, current_time, portfolio):
-    stock_strategy = state.get_strategy()
+    stock_strategy = state.get_strategies()
     if stock_strategy.must_be_profitable():
         is_profitable = portfolio.is_profitable(current_date, current_time)
     else:
@@ -88,7 +88,7 @@ def backtest_sell(state, current_date, current_time, portfolio):
         stocks_to_sell = state.get_stocks_to_sell()
         abool = False
         for stock in stocks_to_sell:
-            abool = abool or portfolio.sell(stock, state.get_strategy(),
+            abool = abool or portfolio.sell(stock, state.get_strategies(),
                                             current_date, current_time)
         if abool:
             state.acknowledge_sell(current_date, current_time)
@@ -137,22 +137,28 @@ def backtest(asset_list, start_date, end_date, resolution, days, state):
         date1_obj + datetime.timedelta(days=days_passed), current_time))
 
 
+def construct_strategy(asset_list, portfolio, buying_allocation):
+    strategy = State.HoldingsStrategy(
+        "Buying monthlies at lows", asset_list, assets=State.Assets.Options, buying_allocation=buying_allocation, selling_allocation=1,
+        maximum_allocation_per_stock=0.5, start_with_spreads=True, buying_delay=5, selling_delay=2, strikes_above=0,
+        expiration_length=State.OptionLength.Monthly)
+    strategy.set_buying_conditions(
+        Conditions.IsLowForPeriod(portfolio, sd=0.5, week_length=5))
+    strategy.set_selling_conditions(
+        Conditions.NegaEndIsUpNPercent(portfolio, target_percent_gain=0.5))
+    return strategy
+
+
 def backtest_options(asset_list, start_date, end_date, strikes_above=0,
                      expiration_length=State.OptionLength.Monthly, buying_allocation=1):
     portfolio = State.Portfolio(initial_cash=10000, trading_fees=5.00)
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
     date1_obj = datetime.date(date1[0], date1[1], date1[2])
-    strategy = State.HoldingsStrategy(
-        asset_list, assets=State.Assets.Options, buying_allocation=buying_allocation, selling_allocation=1,
-        maximum_allocation_per_stock=0.5, start_with_spreads=True, buying_delay=5, selling_delay=2, strikes_above=0,
-        expiration_length=State.OptionLength.Monthly)
-    strategy.set_buying_conditions(
-        Conditions.IsLowForPeriod(portfolio, strategy, sd=0.5, week_length=5))
-    strategy.set_selling_conditions(
-        Conditions.NegaEndIsUpNPercent(portfolio, strategy, target_percent_gain=0.5))
+    strategy = construct_strategy(asset_list, portfolio, buying_allocation)
 
     state = State.BacktestingState(
-        portfolio, strategy, date1_obj, State.Resolution.Daily)
+        asset_list, portfolio, date1_obj, State.Resolution.Daily)
+    state.add_strategy(strategy)
     resolution = State.Resolution.Daily
     backtest(asset_list, start_date, end_date,
              resolution, 'all', state)
@@ -170,7 +176,7 @@ if __name__ == "__main__":
 
     # backtest_stocks()
     # backtest_crypto()
-    backtest_options(asset_list=["AMD"], expiration_length=State.OptionLength.Monthly,
-                     start_date='2020-01-01', end_date='2020-07-24', strikes_above=1, buying_allocation=1)
+    backtest_options(asset_list=["NVDA"], expiration_length=State.OptionLength.Monthly,
+                     start_date='2020-01-01', end_date='2020-07-24', strikes_above=1, buying_allocation=2)
     # backtest_options(asset_list=["NVDA"], expiration_length=State.OptionLength.Monthly,
     #                  start_date='2018-08-10', end_date='2019-07-24', strikes_above=1, buying_allocation=1)

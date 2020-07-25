@@ -13,9 +13,9 @@ class Condition(ABC):
     This class is the parent class of all conditions. A condition is simply a predicate. The predicate determines whether a holding
     """
 
-    def __init__(self, portfolio, strategy):
+    def __init__(self, portfolio):
         self._portfolio = portfolio
-        self._asset_info = strategy.get_asset_info()
+        self._asset_info = State.HoldingsStrategy.stock_info
 
     @abstractmethod
     def is_true(self):
@@ -31,8 +31,8 @@ class TimePeriodCondition(Condition):
     within a time period.
     """
 
-    def __init__(self, portfolio, strategy, sd=0, week_length=5):
-        super().__init__(portfolio, strategy)
+    def __init__(self, portfolio, sd=0, week_length=5):
+        super().__init__(portfolio)
         self._standard_deviation = sd
         self._week_length = week_length
         self._changing_week_data = dict()
@@ -94,8 +94,8 @@ class IsHighForPeriod(TimePeriodCondition):
     deviations). False otherwise
     """
 
-    def __init__(self, portfolio, strategy, sd=0, week_length=5):
-        super().__init__(portfolio, strategy, sd, week_length)
+    def __init__(self, portfolio, sd=0, week_length=5):
+        super().__init__(portfolio, sd, week_length)
 
     def is_true(self, current_date, current_time):
         """
@@ -135,8 +135,8 @@ class IsLowForPeriod(TimePeriodCondition):
     deviations). False otherwise
     """
 
-    def __init__(self, portfolio, strategy, sd=0, week_length=5):
-        super().__init__(portfolio, strategy, sd, week_length)
+    def __init__(self, portfolio, sd=0, week_length=5):
+        super().__init__(portfolio, sd, week_length)
 
     def is_true(self, current_date, current_time):
         """
@@ -176,8 +176,8 @@ class NegaEndIsUpNPercent(Condition):
     deviations). False otherwise
     """
 
-    def __init__(self, portfolio, strategy, target_percent_gain=0.6):
-        super().__init__(portfolio, strategy)
+    def __init__(self, portfolio, target_percent_gain=0.6):
+        super().__init__(portfolio)
         self._percent_gain = target_percent_gain
 
     def is_true(self, current_date, current_time):
