@@ -181,7 +181,7 @@ class BacktestingState(object):
             return False
 
         conditions_are_met = self._strategies.selling_conditions_are_met(
-            current_date, current_time, is_profitable)
+            current_date, current_time) and is_profitable
 
         if not conditions_are_met[0]:
             return False
@@ -633,7 +633,7 @@ class HoldingsStrategy(object):
         """
         return self._buying_conditions.is_true(date, time)
 
-    def selling_conditions_are_met(self, date, time, is_profitable=True):
+    def selling_conditions_are_met(self, date, time):
         """
         Returns: True if selling conditions are met; False otherwise
         """
