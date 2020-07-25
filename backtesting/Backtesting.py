@@ -80,15 +80,11 @@ def backtest_buy(state, current_date, current_time, portfolio):
 
 def backtest_sell(state, current_date, current_time, portfolio):
     stock_strategy = state.get_strategies()
-    if stock_strategy.must_be_profitable():
-        is_profitable = portfolio.is_profitable(current_date, current_time)
-    else:
-        is_profitable = True
-    if is_profitable and state.selling_conditions_are_met(current_date, current_time, is_profitable):
+    if state.selling_conditions_are_met(stock_strategy, current_date, current_time):
         stocks_to_sell = state.get_stocks_to_sell()
         abool = False
         for stock in stocks_to_sell:
-            abool = abool or portfolio.sell(stock, state.get_strategies(),
+            abool = abool or portfolio.sell(stock, stock_strategy,
                                             current_date, current_time)
         if abool:
             state.acknowledge_sell(current_date, current_time)

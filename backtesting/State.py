@@ -144,10 +144,15 @@ class BacktestingState(object):
 
         return True
 
-    def selling_conditions_are_met(self, current_date, current_time, is_profitable=True):
+    def selling_conditions_are_met(self, stock_strategy, current_date, current_time):
         """
         Returns: True if selling conditions are met. False otherwise
         """
+        if stock_strategy.must_be_profitable():
+            is_profitable = self._portfolio.is_profitable(
+                current_date, current_time)
+        else:
+            is_profitable = True
         if self._last_sale and self._last_sale[0] + timedelta(self._strategies.get_selling_delay()) > current_date:
             # print("Buying delay")
             return False
