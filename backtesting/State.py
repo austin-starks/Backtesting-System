@@ -49,8 +49,7 @@ class OptionLength(IntFlag):
     Option length
     """
     Weekly = 0
-    ShortMonthly = 1
-    LongMonthly = 2
+    Monthly = 1
 
 
 class BacktestingState(object):
@@ -65,7 +64,7 @@ class BacktestingState(object):
         self._portfolio = portfolio
         self._strategy = strategy
         self._portfolio_history = pd.DataFrame(
-            columns=["Strategy Value"])
+            columns=["Strategy Value", "HODL Value"])
         self._history_length = 0
         current_time = str(Time(resolution))
         self._initial_datetime = current_date, current_time
@@ -76,6 +75,15 @@ class BacktestingState(object):
         self._stocks_to_buy = set()
         self._stocks_to_sell = set()
         self._start_date = current_date
+        asset_list = self._strategy.get_asset_names()
+        initial_value = self._portfolio.get_initial_value()
+        len_list = len(asset_list)
+        self._hodl_comparison = {}
+        for asset in asset_list:
+            price = self._strategy.get_stock_price(asset,
+                                                   current_date, Resolution.time_init(resolution))
+            num_shares = initial_value / price / len_list
+            self._hodl_comparison[asset] = num_shares
 
     def acknowledge_buy(self, date, time):
         """
@@ -173,8 +181,8 @@ class BacktestingState(object):
 
         return f"Snapshot:\nInitial Value: {initial_value}\nCurrent Value: {current_value}" + \
             f"\nBuying Power: {buying_power}\nCurrent Holdings: {holdings}\n" + \
-            f"Percent Change from Start: {percent_change['Strategy Value']}%"
-        # f"Percent Change for HODL: {percent_change['HODL Value']}%"
+            f"Percent Change from Start: {percent_change['Strategy Value']}%\n" +\
+            f"Percent Change for HODL: {percent_change['HODL Value']}%"
 
     def update_portfolio_value(self, cur_date, cur_time):
         """
@@ -183,13 +191,12 @@ class BacktestingState(object):
         # print("here....!")
 
         strat_value = self._portfolio.get_portfolio_value(cur_date, cur_time)
-        # hodl_value = 0
-        # for key in self._hodl_comparison_dict:
-        #     price = self._strategy.get_stock_price(
-        #         key, cur_date, cur_time) * self._hodl_comparison_dict[key]
-        #     hodl_value += price
-
-        self._portfolio_history.loc[self._history_length] = strat_value
+        hodl_value = 0
+        for stock in self._hodl_comparison:
+            hodl_value += self._strategy.get_stock_price(stock,
+                                                         cur_date, cur_time) * self._hodl_comparison[stock]
+        self._portfolio_history.loc[self._history_length] = [
+            strat_value, hodl_value]
         self._history_length += 1
         # update holdings
         holdings = self._portfolio.get_holdings()
@@ -273,7 +280,7 @@ class Holdings(object):
         return self.__str__()
 
     @staticmethod
-    def get_options_symbol(stock, last_price, current_date, strikes_above=0, option_type='C', expiration_length=OptionLength.LongMonthly):
+    def get_options_symbol(stock, last_price, current_date, strikes_above=0, option_type='C', expiration_length=OptionLength.Monthly):
         strikes_above = strikes_above * -1 if option_type == 'P' else strikes_above
         if last_price < 20:
             strike = round(last_price + strikes_above)
@@ -283,8 +290,6 @@ class Holdings(object):
             strike = 10 * round((last_price + 10 * strikes_above) / 10)
         # Get strike price 4 weeks out
         friday = Portfolio._option_expiration(current_date, expiration_length)
-        # if friday - current_date < timedelta(14):
-        #     friday = Portfolio._option_expiration(friday, expiration_length)
         match = re.search(r"20(\d\d)-(\d\d)-(\d\d)", str(friday))
         str_price = str(int(strike))
         while len(str_price) < 5:
@@ -464,10 +469,9 @@ class HoldingsStrategy(object):
     between deploying the strategy can it be deployed again
     """
 
-    def __init__(self, strategy_name, asset_list, buying_allocation=1, buying_allocation_type='percent_portfolio', maximum_allocation_per_stock=100000000, option_type='C',
+    def __init__(self, asset_list, buying_allocation=1, buying_allocation_type='percent_portfolio', maximum_allocation_per_stock=100000000, option_type='C',
                  minimum_allocation=0.0, buying_delay=1, selling_delay=0, selling_allocation=0.1, assets=Assets.Stocks, must_be_profitable_to_sell=False,
-                 strikes_above=0, expiration_length=OptionLength.LongMonthly, start_with_spreads=True):
-        self._strategy_name = strategy_name
+                 strikes_above=0, expiration_length=OptionLength.Monthly, start_with_spreads=True):
         self._asset_info = dict()
         self._stock_list = asset_list
         self._assets = assets
@@ -498,13 +502,13 @@ class HoldingsStrategy(object):
         """
         The string representation of this strategy
         """
-        return f"Strategy {self._strategy_name} for {self._stock_list}"
+        return f"Strategy for {self._stock_list}"
 
     def __repr__(self):
         """
         The repr representation of this strategy
         """
-        return f"Strategy {self._strategy_name} for {self._stock_list}"
+        return f"Strategy for {self._stock_list}"
 
     def must_be_profitable(self):
         """
@@ -589,7 +593,10 @@ class HoldingsStrategy(object):
         Returns: the current price of the stock at this date and time
         """
         df = self._asset_info[stock]
-        return round(df.loc[str(current_date)].loc[str(time)], 2)
+        try:
+            return round(df.loc[str(current_date)].loc[str(time)], 2)
+        except KeyError:
+            return round(df.loc[str(current_date - timedelta(1))].loc[str(time)], 2)
 
     @staticmethod
     def get_stock_price_static(stock, current_date, time):
@@ -850,11 +857,8 @@ class Portfolio(object):
 
     @staticmethod
     def _option_expiration(date, options_length):
-        if options_length == OptionLength.LongMonthly or options_length == OptionLength.ShortMonthly:
-            if options_length == OptionLength.LongMonthly:
-                now = date + timedelta(28)
-            else:
-                now = date
+        if options_length == OptionLength.Monthly:
+            now = date + timedelta(28)
             first_day_of_month = datetime(now.year, now.month, 1)
             first_friday = first_day_of_month + \
                 timedelta(
@@ -864,7 +868,7 @@ class Portfolio(object):
         elif options_length == OptionLength.Weekly:
             while date.weekday() != 4:
                 date = date + timedelta(1)
-            return date
+            return date + timedelta(14)
 
     def check_max_allocation(self, stock_name, stock_strategy, cur_date, cur_time):
         """
@@ -1065,11 +1069,11 @@ class Portfolio(object):
         self.subtract_holdings(option_name, num_contracts * price_multiplier)
         if total_price > 0:
             Helper.log_info(
-                f"\nSold (to close) {num_contracts} {option_name} (${last_price} stock price) contract(s) on {current_date}" +
+                f"\nSold (to close) {num_contracts} {option_name} (${strategy.get_stock_price(stock_name, current_date, current_time)} stock price) contract(s) on {current_date}" +
                 f" at {current_time} for ${last_price} per contract.\n{strategy}\n---")
         else:
             Helper.log_info(
-                f"\nBought (to close) {num_contracts} {option_name}  (${last_price} stock price) contract(s) on {current_date} " +
+                f"\nBought (to close) {num_contracts} {option_name}  (${strategy.get_stock_price(stock_name, current_date, current_time)} stock price) contract(s) on {current_date} " +
                 f"at {current_time} for ${last_price} per contract.\n{strategy}\n---")
         return abool
 

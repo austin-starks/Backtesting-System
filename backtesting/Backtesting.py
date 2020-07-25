@@ -137,14 +137,15 @@ def backtest(asset_list, start_date, end_date, resolution, days, state):
         date1_obj + datetime.timedelta(days=days_passed), current_time))
 
 
-def backtest_options(asset_list, start_date, end_date):
+def backtest_options(asset_list, start_date, end_date, strikes_above=0,
+                     expiration_length=State.OptionLength.Monthly, buying_allocation=1):
     portfolio = State.Portfolio(initial_cash=10000, trading_fees=5.00)
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
     date1_obj = datetime.date(date1[0], date1[1], date1[2])
     strategy = State.HoldingsStrategy(
-        "Buying at weekly lows", asset_list, assets=State.Assets.Options, buying_allocation=3, selling_allocation=1,
-        maximum_allocation_per_stock=0.5, start_with_spreads=True, buying_delay=5, selling_delay=2, strikes_above=2,
-        expiration_length=State.OptionLength.LongMonthly)
+        asset_list, assets=State.Assets.Options, buying_allocation=buying_allocation, selling_allocation=1,
+        maximum_allocation_per_stock=0.5, start_with_spreads=True, buying_delay=5, selling_delay=2, strikes_above=0,
+        expiration_length=State.OptionLength.Monthly)
     strategy.set_buying_conditions(
         Conditions.IsLowForPeriod(portfolio, strategy, sd=0.5, week_length=5))
     strategy.set_selling_conditions(
@@ -169,5 +170,7 @@ if __name__ == "__main__":
 
     # backtest_stocks()
     # backtest_crypto()
-    backtest_options(asset_list=["NVDA"],
-                     start_date='2020-02-24', end_date='2020-07-24')
+    backtest_options(asset_list=["AMD"], expiration_length=State.OptionLength.Monthly,
+                     start_date='2020-01-01', end_date='2020-07-24', strikes_above=1, buying_allocation=1)
+    # backtest_options(asset_list=["NVDA"], expiration_length=State.OptionLength.Monthly,
+    #                  start_date='2018-08-10', end_date='2019-07-24', strikes_above=1, buying_allocation=1)
