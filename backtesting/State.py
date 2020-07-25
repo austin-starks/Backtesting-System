@@ -44,6 +44,15 @@ class Assets(Enum):
     Crypto = 'crypto'
 
 
+class OptionLength(IntFlag):
+    """
+    Option length
+    """
+    Weekly = 0
+    ShortMonthly = 1
+    LongMonthly = 2
+
+
 class BacktestingState(object):
     """
     A class that repreents all of the state during a backtest.
@@ -264,7 +273,7 @@ class Holdings(object):
         return self.__str__()
 
     @staticmethod
-    def get_options_symbol(stock, last_price, current_date, strikes_above=0, option_type='C'):
+    def get_options_symbol(stock, last_price, current_date, strikes_above=0, option_type='C', expiration_length=OptionLength.LongMonthly):
         strikes_above = strikes_above * -1 if option_type == 'P' else strikes_above
         if last_price < 20:
             strike = round(last_price + strikes_above)
@@ -273,9 +282,9 @@ class Holdings(object):
         else:
             strike = 10 * round((last_price + 10 * strikes_above) / 10)
         # Get strike price 4 weeks out
-        friday = Portfolio._option_expiration(current_date)
-        if friday.date() - current_date < timedelta(14):
-            friday = Portfolio._option_expiration(friday + timedelta(28))
+        friday = Portfolio._option_expiration(current_date, expiration_length)
+        # if friday - current_date < timedelta(14):
+        #     friday = Portfolio._option_expiration(friday, expiration_length)
         match = re.search(r"20(\d\d)-(\d\d)-(\d\d)", str(friday))
         str_price = str(int(strike))
         while len(str_price) < 5:
@@ -457,11 +466,12 @@ class HoldingsStrategy(object):
 
     def __init__(self, strategy_name, asset_list, buying_allocation=1, buying_allocation_type='percent_portfolio', maximum_allocation_per_stock=100000000, option_type='C',
                  minimum_allocation=0.0, buying_delay=1, selling_delay=0, selling_allocation=0.1, assets=Assets.Stocks, must_be_profitable_to_sell=False,
-                 strikes_above=0, start_with_spreads=True):
+                 strikes_above=0, expiration_length=OptionLength.LongMonthly, start_with_spreads=True):
         self._strategy_name = strategy_name
         self._asset_info = dict()
         self._stock_list = asset_list
         self._assets = assets
+        self._expiration_length = expiration_length
         for stock in asset_list:
             if assets != 'crypto':
                 self._asset_info[stock] = load_stock_data(stock)
@@ -507,6 +517,12 @@ class HoldingsStrategy(object):
         Returns: the asset names
         """
         return self._stock_list
+
+    def expiration_length(self):
+        """
+        Returns: True if the strategy is a weekly, False otherwise
+        """
+        return self._expiration_length
 
     def get_buying_delay(self):
         """
@@ -833,14 +849,22 @@ class Portfolio(object):
             return num_shares, dollars_to_spend
 
     @staticmethod
-    def _option_expiration(date):
-        now = date
-        first_day_of_month = datetime(now.year, now.month, 1)
-        first_friday = first_day_of_month + \
-            timedelta(
-                days=((4 - calendar.monthrange(now.year, now.month)[0]) + 7) % 7)
-        # 4 is friday of week
-        return first_friday + timedelta(days=14)
+    def _option_expiration(date, options_length):
+        if options_length == OptionLength.LongMonthly or options_length == OptionLength.ShortMonthly:
+            if options_length == OptionLength.LongMonthly:
+                now = date + timedelta(28)
+            else:
+                now = date
+            first_day_of_month = datetime(now.year, now.month, 1)
+            first_friday = first_day_of_month + \
+                timedelta(
+                    days=((4 - calendar.monthrange(now.year, now.month)[0]) + 7) % 7)
+            # 4 is friday of week
+            return (first_friday + timedelta(days=14)).date()
+        elif options_length == OptionLength.Weekly:
+            while date.weekday() != 4:
+                date = date + timedelta(1)
+            return date
 
     def check_max_allocation(self, stock_name, stock_strategy, cur_date, cur_time):
         """
@@ -876,7 +900,7 @@ class Portfolio(object):
         abool = False
         last_price = stock_strategy.get_stock_price(stock, cur_date, cur_time)
         symbol = Holdings.get_options_symbol(
-            stock, last_price, cur_date, stock_strategy.get_strikes_above(), stock_strategy.get_option_type())
+            stock, last_price, cur_date, stock_strategy.get_strikes_above(), stock_strategy.get_option_type(), stock_strategy.expiration_length())
         if not self.check_max_allocation(symbol, stock_strategy, cur_date, cur_time):
             Helper.log_warn(
                 f"Portfolio currently has maximum allocation of {stock}")
@@ -918,9 +942,9 @@ class Portfolio(object):
         last_price = stock_strategy.get_stock_price(stock, cur_date, cur_time)
         symbol_list = [
             Holdings.get_options_symbol(
-                stock, last_price, cur_date, stock_strategy.get_strikes_above(), stock_strategy.get_option_type()),
+                stock, last_price, cur_date, stock_strategy.get_strikes_above(), stock_strategy.get_option_type(), stock_strategy.expiration_length()),
             Holdings.get_options_symbol(
-                stock, last_price, cur_date, stock_strategy.get_strikes_above() + 1, stock_strategy.get_option_type())
+                stock, last_price, cur_date, stock_strategy.get_strikes_above() + 1, stock_strategy.get_option_type(), stock_strategy.expiration_length())
         ]
         if not self.check_max_allocation(symbol_list[0], stock_strategy, cur_date, cur_time):
             Helper.log_warn(

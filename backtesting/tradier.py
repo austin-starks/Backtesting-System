@@ -6,14 +6,14 @@ import pandas as pd
 api_key = os.environ['TRADIER_API_KEY']
 
 trade_data_response = requests.get('https://sandbox.tradier.com/v1/markets/history?',
-                                   params={'symbol': 'CHGG200320C00040000',
+                                   params={'symbol': 'NVDA200731C00410000',
                                            'start': '2020-01-01'},
                                    headers={'Authorization': api_key,
                                             'Accept': 'application/json'})
 
 print("Response", trade_data_response)
 trade_data_json = trade_data_response.json()
-print("JSON", trade_data_json)
+# print("JSON", trade_data_json)
 trade_data_arr = trade_data_json['history']['day']
 dates = []
 trade_data = []
