@@ -23,7 +23,7 @@ def market_is_open(now):
 
 
 def clear_logs():
-    directory = 'logs'
+    directory = os.path.dirname(Path(__file__).absolute()) + '/logs'
     filelist = sorted([name for name in os.listdir(
         directory) if os.path.isfile(os.path.join(directory, name))])
     len_list = len(filelist)
@@ -136,28 +136,58 @@ def backtest(asset_list, start_date, end_date, resolution, days, state):
         date1_obj + datetime.timedelta(days=days_passed), current_time))
 
 
-def construct_strategy(asset_list, portfolio, buying_allocation):
+def sell_after_uncap_strategy(asset_list, portfolio, selling_allocation, selling_delay, target_percent_gain=0.5):
     strategy = State.HoldingsStrategy(
-        "Buying monthlies at lows", asset_list, assets=State.Assets.Options, buying_allocation=buying_allocation, selling_allocation=1,
-        maximum_allocation_per_stock=0.5, start_with_spreads=True, buying_delay=5, selling_delay=2, strikes_above=0,
+        "Selling option after uncapping for profit", asset_list, assets=State.Assets.Options, buying_allocation=0, selling_allocation=selling_allocation,
+        maximum_allocation_per_stock=1.0, start_with_spreads=False, buying_delay=0, selling_delay=selling_delay, strikes_above=0)
+    strategy.set_selling_conditions(
+        Conditions.HasPosaEndThatsBooming(portfolio, target_percent_gain=target_percent_gain))
+
+    return strategy
+
+
+def construct_long_strategy(asset_list, portfolio, buying_allocation, buying_delay, selling_delay,
+                            option_type='C', spread_type='debit', strikes_above=0):
+    strategy = State.HoldingsStrategy(
+        "Going long at lows", asset_list, assets=State.Assets.Options, buying_allocation=buying_allocation, selling_allocation=1,
+        maximum_allocation_per_stock=0.25, start_with_spreads=True, buying_delay=5, selling_delay=selling_delay, strikes_above=0,
         expiration_length=State.OptionLength.Monthly)
     strategy.set_buying_conditions(
-        Conditions.IsLowForPeriod(portfolio, sd=0.5, week_length=5))
+        Conditions.IsLowForPeriod(portfolio, sd=0, week_length=5))
     strategy.set_selling_conditions(
         Conditions.NegaEndIsUpNPercent(portfolio, target_percent_gain=0.5))
     return strategy
 
 
-def backtest_options(asset_list, start_date, end_date, strikes_above=0,
-                     expiration_length=State.OptionLength.Monthly, buying_allocation=1):
+def construct_short_strategy(asset_list, portfolio, buying_allocation, buying_delay, selling_delay,
+                             option_type='P', spread_type='debit', strikes_above=0):
+    strategy = State.HoldingsStrategy(
+        "Going short at highs", asset_list, assets=State.Assets.Options, buying_allocation=buying_allocation, selling_allocation=1,
+        maximum_allocation_per_stock=0.15, start_with_spreads=True, buying_delay=buying_delay, selling_delay=selling_delay, strikes_above=strikes_above,
+        expiration_length=State.OptionLength.Monthly, option_type=option_type, spread_type=spread_type)
+    strategy.set_buying_conditions(
+        Conditions.IsHighForPeriod(portfolio, sd=0, week_length=7))
+    strategy.set_selling_conditions(
+        Conditions.NegaEndIsUpNPercent(portfolio, target_percent_gain=0.75))
+    return strategy
+
+
+def backtest_strategy(asset_list, start_date, end_date):
     portfolio = State.Portfolio(initial_cash=10000, trading_fees=5.00)
     date1 = [int(x) for x in re.split(r'[\-]', start_date)]
     date1_obj = datetime.date(date1[0], date1[1], date1[2])
-    strategy = construct_strategy(asset_list, portfolio, buying_allocation)
-
     state = State.BacktestingState(
         asset_list, portfolio, date1_obj, State.Resolution.Daily)
-    state.add_strategy(strategy)
+    call_strategy = construct_long_strategy(
+        asset_list, portfolio, buying_allocation=3, buying_delay=4, selling_delay=2)
+    state.add_strategy(call_strategy)
+    put_strategy = construct_short_strategy(
+        asset_list, portfolio, buying_allocation=2, buying_delay=6, selling_delay=1, strikes_above=-4)
+    state.add_strategy(put_strategy)
+    # recap_strategy = sell_after_uncap_strategy(
+    #     asset_list, portfolio, selling_allocation=1, selling_delay=2)
+    # state.add_strategy(recap_strategy)
+
     resolution = State.Resolution.Daily
     backtest(asset_list, start_date, end_date,
              resolution, 'all', state)
@@ -175,7 +205,8 @@ if __name__ == "__main__":
 
     # backtest_stocks()
     # backtest_crypto()
-    backtest_options(asset_list=["NVDA"], expiration_length=State.OptionLength.Monthly,
-                     start_date='2020-01-01', end_date='2020-07-24', strikes_above=1, buying_allocation=2)
-    # backtest_options(asset_list=["NVDA"], expiration_length=State.OptionLength.Monthly,
-    #                  start_date='2018-08-10', end_date='2019-07-24', strikes_above=1, buying_allocation=1)
+    backtest_strategy(asset_list=["NVDA"],
+                      start_date='2019-06-01', end_date='2020-01-01')
+
+    # backtest_strategy(asset_list=["NVDA"],
+    #                   start_date='2020-01-01', end_date='2020-07-20')
