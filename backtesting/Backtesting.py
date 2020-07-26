@@ -160,12 +160,12 @@ def construct_long_strategy(asset_list, portfolio, buying_allocation, buying_del
     return strategy
 
 
-def construct_short_strategy(asset_list, portfolio, buying_allocation, buying_delay, selling_delay,
-                             option_type='P', spread_type='debit', strikes_above=0):
+def construct_short_strategy(asset_list, portfolio, buying_allocation, buying_delay, selling_delay, spread_width=1,
+                             option_type='P', spread_type='debit', strikes_above=0, expiration_length=State.OptionLength.Monthly):
     strategy = State.HoldingsStrategy(
         "Going short at highs", asset_list, assets=State.Assets.Options, buying_allocation=buying_allocation, selling_allocation=1,
         maximum_allocation_per_stock=0.15, start_with_spreads=True, buying_delay=buying_delay, selling_delay=selling_delay, strikes_above=strikes_above,
-        expiration_length=State.OptionLength.Monthly, option_type=option_type, spread_type=spread_type)
+        expiration_length=State.OptionLength.Monthly, option_type=option_type, spread_type=spread_type, spread_width=spread_width)
     strategy.set_buying_conditions(
         Conditions.IsHighForPeriod(portfolio, sd=0, week_length=7))
     strategy.set_selling_conditions(
@@ -183,7 +183,8 @@ def backtest_strategy(asset_list, start_date, end_date):
         asset_list, portfolio, buying_allocation=3, buying_delay=4, selling_delay=2, strikes_above=1)
     state.add_strategy(call_strategy)
     put_strategy = construct_short_strategy(
-        asset_list, portfolio, buying_allocation=2, buying_delay=6, selling_delay=1, strikes_above=-4)
+        asset_list, portfolio, buying_allocation=2, buying_delay=6, selling_delay=1, strikes_above=-1,
+        expiration_length=State.OptionLength.TwoMonthly, spread_width=2)
     state.add_strategy(put_strategy)
     # recap_strategy = sell_after_uncap_strategy(
     #     asset_list, portfolio, selling_allocation=1, selling_delay=2, target_percent_gain=1.00)
@@ -207,7 +208,7 @@ if __name__ == "__main__":
     # backtest_stocks()
     # backtest_crypto()
     # backtest_strategy(asset_list=["NVDA"],
-    #                   start_date='2019-06-01', end_date='2020-01-01')
+    #                   start_date='2020-01-01', end_date='2020-07-01')
 
     backtest_strategy(asset_list=["NVDA"],
-                      start_date='2020-01-01', end_date='2020-07-20')
+                      start_date='2018-06-01', end_date='2019-01-20')

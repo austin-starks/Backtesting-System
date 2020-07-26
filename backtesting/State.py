@@ -50,6 +50,7 @@ class OptionLength(IntFlag):
     """
     Weekly = 0
     Monthly = 1
+    TwoMonthly = 2
 
 
 class BacktestingState(object):
@@ -548,7 +549,10 @@ class HoldingsStrategy(object):
         """
         Returns: the number of strike prices between each end of the spread
         """
-        return self._spread_width
+        if self._option_type == 'C':
+            return self._spread_width
+        else:
+            return self._spread_width * -1
 
     def expiration_length(self):
         """
@@ -908,6 +912,13 @@ class Portfolio(object):
                 # print('less than timedelta')
                 answer = Portfolio.__option_expiration_helper(
                     answer + timedelta(28), options_length)
+            # print("_option_expiration_answer2", answer)
+        if options_length == OptionLength.TwoMonthly:
+            # print(answer - date)
+            if answer - date < timedelta(58):
+                # print('less than timedelta')
+                answer = Portfolio.__option_expiration_helper(
+                    answer + timedelta(58), options_length)
             # print("_option_expiration_answer2", answer)
         return answer
 
