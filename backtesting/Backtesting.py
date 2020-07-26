@@ -29,12 +29,13 @@ def clear_logs():
     len_list = len(filelist)
     # print(filelist)
     i = 0
-    for filename in filelist:
-        # print(filename)
-        os.remove(os.path.join(directory, filename))
-        i += 1
-        if i > len_list - 5:
-            break
+    if len_list > 10:
+        for filename in filelist:
+            # print(filename)
+            os.remove(os.path.join(directory, filename))
+            i += 1
+            if i > len_list - 5:
+                break
 
 
 def check_backtest_preconditions(start_date, end_date, resolution, days):
@@ -179,13 +180,13 @@ def backtest_strategy(asset_list, start_date, end_date):
     state = State.BacktestingState(
         asset_list, portfolio, date1_obj, State.Resolution.Daily)
     call_strategy = construct_long_strategy(
-        asset_list, portfolio, buying_allocation=3, buying_delay=4, selling_delay=2)
+        asset_list, portfolio, buying_allocation=3, buying_delay=4, selling_delay=2, strikes_above=1)
     state.add_strategy(call_strategy)
     put_strategy = construct_short_strategy(
         asset_list, portfolio, buying_allocation=2, buying_delay=6, selling_delay=1, strikes_above=-4)
     state.add_strategy(put_strategy)
     # recap_strategy = sell_after_uncap_strategy(
-    #     asset_list, portfolio, selling_allocation=1, selling_delay=2)
+    #     asset_list, portfolio, selling_allocation=1, selling_delay=2, target_percent_gain=1.00)
     # state.add_strategy(recap_strategy)
 
     resolution = State.Resolution.Daily
@@ -205,8 +206,8 @@ if __name__ == "__main__":
 
     # backtest_stocks()
     # backtest_crypto()
-    backtest_strategy(asset_list=["NVDA"],
-                      start_date='2019-06-01', end_date='2020-01-01')
-
     # backtest_strategy(asset_list=["NVDA"],
-    #                   start_date='2020-01-01', end_date='2020-07-20')
+    #                   start_date='2019-06-01', end_date='2020-01-01')
+
+    backtest_strategy(asset_list=["NVDA"],
+                      start_date='2020-01-01', end_date='2020-07-20')

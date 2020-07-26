@@ -290,7 +290,6 @@ class Holdings(object):
 
     @staticmethod
     def get_options_symbol(stock, last_price, current_date, strikes_above=0, option_type='C', expiration_length=OptionLength.Monthly):
-        strikes_above = strikes_above * -1 if option_type == 'P' else strikes_above
         if last_price < 20:
             strike = round(last_price + strikes_above)
         elif last_price < 100:
@@ -305,6 +304,9 @@ class Holdings(object):
             str_price = '0' + str_price
         str_price = str_price + "000"
         symbol = f"{stock}{match.group(1)}{match.group(2)}{match.group(3)}{option_type}{str_price}"
+        # print("symbol", symbol)
+        # print("friday", friday)
+        # print("current_date", current_date)
         return symbol
 
     @staticmethod
@@ -484,11 +486,12 @@ class HoldingsStrategy(object):
 
     def __init__(self, strategy_name, asset_list, buying_allocation=1, buying_allocation_type='percent_portfolio', maximum_allocation_per_stock=1, option_type='C',
                  minimum_allocation=0.0, buying_delay=1, selling_delay=0, selling_allocation=0.1, assets=Assets.Stocks, must_be_profitable_to_sell=False,
-                 strikes_above=0, expiration_length=OptionLength.Monthly, start_with_spreads=True, spread_type='debit'):
+                 strikes_above=0, expiration_length=OptionLength.Monthly, start_with_spreads=True, spread_type='debit', spread_width=1):
         self._strategy_name = strategy_name
         self._stock_list = asset_list
         self._assets = assets
         self._expiration_length = expiration_length
+        self._spread_width = spread_width
         for stock in asset_list:
             if assets != 'crypto':
                 HoldingsStrategy.stock_info[stock] = load_stock_data(stock)
@@ -540,6 +543,12 @@ class HoldingsStrategy(object):
         Returns: the spread type (debit or credit)
         """
         return self._spread_type
+
+    def get_spread_width(self):
+        """
+        Returns: the number of strike prices between each end of the spread
+        """
+        return self._spread_width
 
     def expiration_length(self):
         """
@@ -873,9 +882,9 @@ class Portfolio(object):
             return num_shares, dollars_to_spend
 
     @staticmethod
-    def _option_expiration(date, options_length):
+    def __option_expiration_helper(date, options_length):
         if options_length == OptionLength.Monthly:
-            now = date + timedelta(30)
+            now = date
             first_day_of_month = datetime(now.year, now.month, 1)
             first_friday = first_day_of_month + \
                 timedelta(
@@ -887,6 +896,20 @@ class Portfolio(object):
             while date.weekday() != 4:
                 date = date + timedelta(1)
             return date + timedelta(14)
+
+    @staticmethod
+    def _option_expiration(date, options_length):
+        answer = Portfolio.__option_expiration_helper(date, options_length)
+        # print('----')
+        # print("_option_expiration_answer", answer)
+        if options_length == OptionLength.Monthly:
+            # print(answer - date)
+            if answer - date < timedelta(28):
+                # print('less than timedelta')
+                answer = Portfolio.__option_expiration_helper(
+                    answer + timedelta(28), options_length)
+            # print("_option_expiration_answer2", answer)
+        return answer
 
     def check_max_allocation(self, stock_name, stock_strategy, cur_date, cur_time):
         """
@@ -969,11 +992,11 @@ class Portfolio(object):
                 Holdings.get_options_symbol(
                     stock, last_price, cur_date, stock_strategy.get_strikes_above(), stock_strategy.get_option_type(), stock_strategy.expiration_length()),
                 Holdings.get_options_symbol(
-                    stock, last_price, cur_date, stock_strategy.get_strikes_above() + 1, stock_strategy.get_option_type(), stock_strategy.expiration_length())]
+                    stock, last_price, cur_date, stock_strategy.get_strikes_above() + stock_strategy.get_spread_width(), stock_strategy.get_option_type(), stock_strategy.expiration_length())]
         else:
             symbol_list = [
                 Holdings.get_options_symbol(
-                    stock, last_price, cur_date, stock_strategy.get_strikes_above() + 1, stock_strategy.get_option_type(), stock_strategy.expiration_length()),
+                    stock, last_price, cur_date, stock_strategy.get_strikes_above() + stock_strategy.get_spread_width(), stock_strategy.get_option_type(), stock_strategy.expiration_length()),
                 Holdings.get_options_symbol(
                     stock, last_price, cur_date, stock_strategy.get_strikes_above(), stock_strategy.get_option_type(), stock_strategy.expiration_length())]
 
