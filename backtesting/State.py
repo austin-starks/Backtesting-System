@@ -148,6 +148,7 @@ class BacktestingState(object):
         """
         Returns: True if selling conditions are met. False otherwise
         """
+        # Helper.log_warn(strategy, current_date, current_time)
         if strategy.must_be_profitable():
             is_profitable = self._portfolio.is_profitable(
                 current_date, current_time)
@@ -161,7 +162,7 @@ class BacktestingState(object):
 
         conditions_are_met = strategy.selling_conditions_are_met(
             current_date, current_time)
-
+        # Helper.log_warn(conditions_are_met)
         if not conditions_are_met[0] and is_profitable:
             return False
         self._strategies[strategy]["stocks_to_sell"] = set(
@@ -325,37 +326,47 @@ class Holdings(object):
             # print(f"LOCAL MEMORY FOR {symbol}")
             return Holdings.options_prices[symbol]
         else:
-            api_key = os.environ['TRADIER_API_KEY']
-            # print(f"API REQUEST FOR {symbol}")
-            try:
-                # print("Doing API request...")
-                trade_data_response = requests.get('https://sandbox.tradier.com/v1/markets/history?',
-                                                   params={'symbol': symbol,
-                                                           'start': '2015-01-01'},
-                                                   headers={'Authorization': api_key,
-                                                            'Accept': 'application/json'})
-                # print("Response:", trade_data_response)
-                trade_data_json = trade_data_response.json()
-                # print("JSON:", trade_data_json)
-                trade_data_arr = trade_data_json['history']['day']
-                dates = []
-                trade_data = []
-                for element in trade_data_arr:
-                    dates.append(element['date'])
-                    trade_data.append([element['open'], element['high'],
-                                       element['low'], element['close'], element['volume']])
-                df = pd.DataFrame(trade_data, index=dates,
-                                  columns=["Open", "High", "Low", "Close", "Volume"])
+            path = os.path.dirname(
+                Path(__file__).absolute()) + '/price_data/options'
+            filename = f"{path}/{symbol}{str(date.today())}.csv"
+            df = None
+            if os.path.isfile(filename):
+                df = pd.read_csv(filename, header=0, index_col="Date",
+                                 names=["Date", "Open", "High", "Low", "Close", "Volume"])
                 # print(df)
-                Holdings.options_prices[symbol] = df
-                # print(Holdings.options_prices)
-                return df
-            except Exception as e:
-                Helper.log_warn(f"Exception: {e}")
-                Holdings.failed_options_prices[symbol] = True
-                # Helper.log_warn(trade_data_response)
-                # Helper.log_warn(trade_data_json)
-                return None
+            else:
+                # print(f"API REQUEST FOR {symbol}")
+                api_key = os.environ['TRADIER_API_KEY']
+                try:
+                    # print("Doing API request...")
+                    trade_data_response = requests.get('https://sandbox.tradier.com/v1/markets/history?',
+                                                       params={'symbol': symbol,
+                                                               'start': '2015-01-01'},
+                                                       headers={'Authorization': api_key,
+                                                                'Accept': 'application/json'})
+                    # print("Response:", trade_data_response)
+                    trade_data_json = trade_data_response.json()
+                    # print("JSON:", trade_data_json)
+                    trade_data_arr = trade_data_json['history']['day']
+                    dates = []
+                    trade_data = []
+                    for element in trade_data_arr:
+                        dates.append(element['date'])
+                        trade_data.append([element['open'], element['high'],
+                                           element['low'], element['close'], element['volume']])
+                    df = pd.DataFrame(trade_data, index=dates,
+                                      columns=["Open", "High", "Low", "Close", "Volume"])
+                    # Helper.log_warn(df)
+                    df.to_csv(filename)
+                    # print(df)
+                    Holdings.options_prices[symbol] = df
+                    # print(Holdings.options_prices)
+                except Exception as e:
+                    Helper.log_warn(f"Exception: {e}")
+                    Holdings.failed_options_prices[symbol] = True
+                    # Helper.log_warn(trade_data_response)
+                    # Helper.log_warn(trade_data_json)
+            return df
 
     @staticmethod
     def get_options_price(options_name, current_date, time):
@@ -1107,6 +1118,7 @@ class Portfolio(object):
         """
         Sells the option according to the stock strategy
         """
+
         abool = False
         # change last price to get last options price at this date
         stock_name = re.match(r"\D+", option_name).group(0)
@@ -1128,6 +1140,11 @@ class Portfolio(object):
         # Helper.log_info(f'total_price {total_price}')
         self.increase_buying_power(total_price)
         self.subtract_holdings(option_name, num_contracts * price_multiplier)
+        if 'Selling option after uncapping for profit' in str(strategy):
+            Helper.log_warn(strategy)
+            Helper.log_warn(
+                f"last price {last_price}, num contracts {num_contracts}, total price {total_price}")
+
         if total_price > 0:
             Helper.log_info(
                 f"\nSold (to close) {num_contracts} {option_name} (${HoldingsStrategy.get_stock_price(stock_name, current_date, current_time)} stock price) contract(s) on {current_date}" +

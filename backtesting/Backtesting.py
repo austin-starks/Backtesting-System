@@ -104,7 +104,6 @@ def backtest_loop(asset_list, state, resolution, date1_obj, epochs, current_time
     while current_epoch <= epochs:
         day_delta = current_epoch // resolution
         current_date = date1_obj + datetime.timedelta(days=day_delta)
-        # print("Backtest loop", current_date)
         if market_is_open(current_date):
             state.update_portfolio_value(current_date, current_time)
             backtest_loop_helper(asset_list, current_date, current_time, state)
@@ -187,7 +186,7 @@ def backtest_strategy(asset_list, start_date, end_date):
         expiration_length=State.OptionLength.TwoMonthly, spread_width=2)
     state.add_strategy(put_strategy)
     # recap_strategy = sell_after_uncap_strategy(
-    #     asset_list, portfolio, selling_allocation=1, selling_delay=2, target_percent_gain=1.00)
+    #     asset_list, portfolio, selling_allocation=1, selling_delay=3, target_percent_gain=.5)
     # state.add_strategy(recap_strategy)
 
     resolution = State.Resolution.Daily
@@ -207,8 +206,8 @@ if __name__ == "__main__":
 
     # backtest_stocks()
     # backtest_crypto()
-    # backtest_strategy(asset_list=["NVDA"],
-    #                   start_date='2020-01-01', end_date='2020-07-01')
-
     backtest_strategy(asset_list=["NVDA"],
-                      start_date='2018-06-01', end_date='2019-01-20')
+                      start_date='2020-01-01', end_date='2020-07-01')
+
+    # backtest_strategy(asset_list=["NVDA"],
+    #                   start_date='2018-06-01', end_date='2019-01-20')
