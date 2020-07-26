@@ -208,3 +208,57 @@ class NegaEndIsUpNPercent(Condition):
             return abool, stocks_to_sell
         else:
             return abool, None
+
+
+class HasPosaEndThatsBooming(Condition):
+    """
+    Condition: Is True if the stock is low for the week (+/- n standard
+    deviations). False otherwise
+    """
+
+    def __init__(self, portfolio, target_percent_gain=0.6):
+        super().__init__(portfolio)
+        self._percent_gain = target_percent_gain
+
+    def is_true(self, current_date, current_time):
+        """
+        Helper function for is_true for handling stock data
+        """
+        holdings = self._portfolio.get_holdings()
+        abool = False
+        # print("HERE", holdings)
+        stocks_to_sell = dict()
+        for holding_key in holdings:
+            nega_end, posa_end = 0, 0
+            total_current_price = 0.0
+            total_original_price = 0.0
+            lowest_price = 100000000000000
+            lowest_price_option = None
+            positions = holdings[holding_key].get_positions()
+            for position_key in positions:
+                position_info = positions[position_key]
+                # if it is a nega-end
+                if position_info[0] < 0:
+                    nega_end += 1
+                else:
+                    posa_end += 1
+                current_price = State.Holdings.get_options_price(position_key,
+                                                                 current_date, current_time)
+                original_price = position_info[1]
+                if current_price < lowest_price:
+                    lowest_price = current_price
+                    lowest_price_option = position_key
+                total_current_price += current_price * position_info[0]
+                total_original_price += original_price * position_info[0]
+            percent_gain = (total_original_price -
+                            total_current_price) / total_original_price
+            more_posa_ends = posa_end > nega_end
+            if percent_gain and more_posa_ends > self._percent_gain:
+                abool = True
+                stocks_to_sell[lowest_price_option] = (
+                    current_date, current_time, lowest_price)
+
+        if abool:
+            return abool, stocks_to_sell
+        else:
+            return abool, None
