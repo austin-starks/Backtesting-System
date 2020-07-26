@@ -366,6 +366,8 @@ class Holdings(object):
             try:
                 # print("date", current_date)
                 # print("date and delta", str(current_date + delta))
+                # Helper.log_info(df.loc[str(current_date)])
+
                 return round(df.loc[str(current_date + delta)].loc[str(time)], 2)
             except KeyError:
                 # print(str(df.iloc[-1].name))
@@ -480,9 +482,9 @@ class HoldingsStrategy(object):
     """
     stock_info = {}
 
-    def __init__(self, strategy_name, asset_list, buying_allocation=1, buying_allocation_type='percent_portfolio', maximum_allocation_per_stock=100000000, option_type='C',
+    def __init__(self, strategy_name, asset_list, buying_allocation=1, buying_allocation_type='percent_portfolio', maximum_allocation_per_stock=1, option_type='C',
                  minimum_allocation=0.0, buying_delay=1, selling_delay=0, selling_allocation=0.1, assets=Assets.Stocks, must_be_profitable_to_sell=False,
-                 strikes_above=0, expiration_length=OptionLength.Monthly, start_with_spreads=True):
+                 strikes_above=0, expiration_length=OptionLength.Monthly, start_with_spreads=True, spread_type='debit'):
         self._strategy_name = strategy_name
         self._stock_list = asset_list
         self._assets = assets
@@ -507,6 +509,7 @@ class HoldingsStrategy(object):
         self._strikes_above = strikes_above
         self._option_type = option_type
         self._start_with_spreads = start_with_spreads
+        self._spread_type = spread_type
 
     def __str__(self):
         """
@@ -531,6 +534,12 @@ class HoldingsStrategy(object):
         Returns: the asset names
         """
         return self._stock_list
+
+    def get_spread_type(self):
+        """
+        Returns: the spread type (debit or credit)
+        """
+        return self._spread_type
 
     def expiration_length(self):
         """
@@ -611,13 +620,19 @@ class HoldingsStrategy(object):
         """
         Returns: True if buying conditions are met; False otherwise
         """
-        return self._buying_conditions.is_true(date, time)
+        if self._buying_conditions:
+            return self._buying_conditions.is_true(date, time)
+        else:
+            return False, None
 
     def selling_conditions_are_met(self, date, time):
         """
         Returns: True if selling conditions are met; False otherwise
         """
-        return self._selling_conditions.is_true(date, time)
+        if self._selling_conditions:
+            return self._selling_conditions.is_true(date, time)
+        else:
+            return False, None
 
     def get_buying_allocation(self):
         """
@@ -860,7 +875,7 @@ class Portfolio(object):
     @staticmethod
     def _option_expiration(date, options_length):
         if options_length == OptionLength.Monthly:
-            now = date + timedelta(28)
+            now = date + timedelta(30)
             first_day_of_month = datetime(now.year, now.month, 1)
             first_friday = first_day_of_month + \
                 timedelta(
@@ -949,12 +964,19 @@ class Portfolio(object):
         abool = False
         last_price = HoldingsStrategy.get_stock_price(
             stock, cur_date, cur_time)
-        symbol_list = [
-            Holdings.get_options_symbol(
-                stock, last_price, cur_date, stock_strategy.get_strikes_above(), stock_strategy.get_option_type(), stock_strategy.expiration_length()),
-            Holdings.get_options_symbol(
-                stock, last_price, cur_date, stock_strategy.get_strikes_above() + 1, stock_strategy.get_option_type(), stock_strategy.expiration_length())
-        ]
+        if stock_strategy.get_spread_type() == 'debit':
+            symbol_list = [
+                Holdings.get_options_symbol(
+                    stock, last_price, cur_date, stock_strategy.get_strikes_above(), stock_strategy.get_option_type(), stock_strategy.expiration_length()),
+                Holdings.get_options_symbol(
+                    stock, last_price, cur_date, stock_strategy.get_strikes_above() + 1, stock_strategy.get_option_type(), stock_strategy.expiration_length())]
+        else:
+            symbol_list = [
+                Holdings.get_options_symbol(
+                    stock, last_price, cur_date, stock_strategy.get_strikes_above() + 1, stock_strategy.get_option_type(), stock_strategy.expiration_length()),
+                Holdings.get_options_symbol(
+                    stock, last_price, cur_date, stock_strategy.get_strikes_above(), stock_strategy.get_option_type(), stock_strategy.expiration_length())]
+
         if not self.check_max_allocation(symbol_list[0], stock_strategy, cur_date, cur_time):
             Helper.log_warn(
                 f"Portfolio currently has maximum allocation of {stock} on {cur_date} at {cur_time}")
@@ -988,7 +1010,7 @@ class Portfolio(object):
         else:
             abool = False
             Helper.log_warn(
-                f"Insufficent buying power to buy {stock}\n{stock_strategy}\n---")
+                f"Insufficent buying power to buy {stock}\n{stock_strategy} on {cur_date} at {cur_time}\n---")
         return abool
 
     def buy(self, stock, stock_strategy, current_date, current_time):
