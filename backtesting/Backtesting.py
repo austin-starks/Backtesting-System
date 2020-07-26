@@ -146,6 +146,17 @@ def sell_after_uncap_strategy(asset_list, portfolio, selling_allocation, selling
     return strategy
 
 
+def sell_booming_nega_end(asset_list, portfolio, selling_allocation, selling_delay, target_percent_gain=0.5):
+    strategy = State.HoldingsStrategy(
+        "Selling booming nega-end for profit", asset_list, assets=State.Assets.Options, buying_allocation=0, selling_allocation=selling_allocation,
+        maximum_allocation_per_stock=1.0, start_with_spreads=False, buying_delay=0, selling_delay=selling_delay, strikes_above=0)
+    strategy.set_selling_conditions(
+        Conditions.NegaEndIsUpNPercent(portfolio, target_percent_gain=0.5)
+    )
+
+    return strategy
+
+
 def construct_long_strategy(asset_list, portfolio, buying_allocation, buying_delay, selling_delay,
                             option_type='C', spread_type='debit', strikes_above=0):
     strategy = State.HoldingsStrategy(
@@ -154,8 +165,6 @@ def construct_long_strategy(asset_list, portfolio, buying_allocation, buying_del
         expiration_length=State.OptionLength.Monthly)
     strategy.set_buying_conditions(
         Conditions.IsLowForPeriod(portfolio, sd=0, week_length=5))
-    strategy.set_selling_conditions(
-        Conditions.NegaEndIsUpNPercent(portfolio, target_percent_gain=0.5))
     return strategy
 
 
@@ -168,7 +177,8 @@ def construct_short_strategy(asset_list, portfolio, buying_allocation, buying_de
     strategy.set_buying_conditions(
         Conditions.IsHighForPeriod(portfolio, sd=0, week_length=7))
     strategy.set_selling_conditions(
-        Conditions.NegaEndIsUpNPercent(portfolio, target_percent_gain=0.75))
+        Conditions.NegaEndIsUpNPercent(portfolio, target_percent_gain=0.5)
+    )
     return strategy
 
 
@@ -185,9 +195,12 @@ def backtest_strategy(asset_list, start_date, end_date):
         asset_list, portfolio, buying_allocation=2, buying_delay=6, selling_delay=1, strikes_above=-1,
         expiration_length=State.OptionLength.TwoMonthly, spread_width=2)
     state.add_strategy(put_strategy)
-    # recap_strategy = sell_after_uncap_strategy(
+    buy_nega_end_strategy = sell_booming_nega_end(
+        asset_list, portfolio, selling_allocation=1, selling_delay=3, target_percent_gain=.5)
+    state.add_strategy(buy_nega_end_strategy)
+    # uncapped_sell_strategy = sell_after_uncap_strategy(
     #     asset_list, portfolio, selling_allocation=1, selling_delay=3, target_percent_gain=.5)
-    # state.add_strategy(recap_strategy)
+    # state.add_strategy(uncapped_sell_strategy)
 
     resolution = State.Resolution.Daily
     backtest(asset_list, start_date, end_date,

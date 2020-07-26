@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta
 import re
 import sys
 import State
+import Helper
 
 
 class Condition(ABC):
@@ -199,7 +200,7 @@ class NegaEndIsUpNPercent(Condition):
                     original_price = position_info[1]
                     # print("current price", current_price,
                     #       "original price", original_price)
-                    if (original_price - current_price) / original_price > self._percent_gain:
+                    if current_price / original_price > self._percent_gain:
                         abool = True
                         stocks_to_sell[position_key] = (
                             current_date, current_time, current_price)
@@ -225,39 +226,57 @@ class HasPosaEndThatsBooming(Condition):
         Helper function for is_true for handling stock data
         """
         holdings = self._portfolio.get_holdings()
-        abool = False
         # print("HERE", holdings)
+        abool = False
         stocks_to_sell = dict()
-        for holding_key in holdings:
-            nega_end, posa_end = 0, 0
-            total_current_price = 0.0
-            total_original_price = 0.0
-            lowest_price = 100000000000000
-            lowest_price_option = None
-            positions = holdings[holding_key].get_positions()
-            for position_key in positions:
-                position_info = positions[position_key]
-                # if it is a nega-end
-                if position_info[0] < 0:
-                    nega_end += 1
+        for holding_name in holdings:
+            holdings_value_call = 0
+            original_value_call = 0
+            holdings_value_put = 0
+            original_value_put = 0
+            holding = holdings[holding_name]
+            positions = holding.get_positions()
+            nega_ends_calls, posa_ends_calls = 0, 0
+            nega_ends_puts, posa_ends_puts = 0, 0
+            highest_valued_call = None
+            highest_valued_call_price = 0
+            highest_valued_put = None
+            highest_valued_put_price = 0
+            for position in positions:
+                price = State.Holdings.get_options_price(
+                    position, current_date, current_time) * 100
+                num_assets = positions[position][0]
+                Helper.log_warn(f"pos_info {positions[position]}")
+                if 'P' in position:
+                    holdings_value_put += num_assets * price
+                    original_value_put += num_assets * positions[position][1]
+                    if num_assets > 0:
+                        posa_ends_puts += 1
+                    else:
+                        nega_ends_puts += 1
+                    if price > highest_valued_put_price:
+                        highest_valued_put_price = price
+                        highest_valued_put = position
                 else:
-                    posa_end += 1
-                current_price = State.Holdings.get_options_price(position_key,
-                                                                 current_date, current_time)
-                original_price = position_info[1]
-                if current_price < lowest_price:
-                    lowest_price = current_price
-                    lowest_price_option = position_key
-                total_current_price += current_price * position_info[0]
-                total_original_price += original_price * position_info[0]
-            percent_gain = (total_original_price -
-                            total_current_price) / total_original_price
-            more_posa_ends = posa_end > nega_end
-            if percent_gain and more_posa_ends > self._percent_gain:
+                    holdings_value_call += num_assets * price
+                    original_value_call += num_assets * positions[position][1]
+                    if num_assets > 0:
+                        posa_ends_calls += 1
+                    else:
+                        nega_ends_calls += 1
+                    if price > highest_valued_call_price:
+                        highest_valued_call_price = price
+                        highest_valued_put = position
+            if posa_ends_calls > nega_ends_calls and original_value_call != 0 and holdings_value_call / original_value_call >= self._percent_gain:
+                Helper.log_warn(
+                    f"highest_valued_call {holdings_value_call} posa {posa_ends_calls} nega {nega_ends_calls}")
                 abool = True
-                stocks_to_sell[lowest_price_option] = (
-                    current_date, current_time, lowest_price)
-
+                stocks_to_sell[position] = highest_valued_call
+            if posa_ends_puts > nega_ends_puts and original_value_put != 0 and holdings_value_put / original_value_put >= self._percent_gain:
+                Helper.log_warn(
+                    f"highest_valued_put {holdings_value_put} posa {posa_ends_puts} nega {nega_ends_puts}")
+                abool = True
+                stocks_to_sell[position] = highest_valued_put
         if abool:
             return abool, stocks_to_sell
         else:
